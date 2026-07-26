@@ -13,8 +13,19 @@ import json
 import os
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import streamlit as st
+
+try:
+    from dotenv import load_dotenv
+
+    # Makes a local `.env` file (ANTHROPIC_API_KEY=...) work too, not just
+    # `.streamlit/secrets.toml` or a real shell-exported env var. Safe no-op
+    # if no .env file exists, and never overrides an already-set env var.
+    load_dotenv(override=False)
+except ImportError:
+    pass
 
 DEFAULT_MODEL = "claude-sonnet-5"
 
@@ -61,10 +72,53 @@ def get_api_key() -> str | None:
         if "ANTHROPIC_API_KEY" in st.secrets:
             key = st.secrets["ANTHROPIC_API_KEY"]
             if key:
-                return str(key)
+                return str(key).strip()
     except Exception:
         pass
-    return os.environ.get("ANTHROPIC_API_KEY")
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    return key.strip() if key else None
+
+
+def get_api_key_debug_info() -> dict:
+    """Non-secret diagnostics for the "no key detected" UI message.
+
+    Never returns the key itself -- only where it looked and whether it
+    found *something* in each location, plus a couple of common-mistake
+    checks (wrong secret name, empty/placeholder value, etc.).
+    """
+    info = {
+        "found_in_secrets": False,
+        "found_in_env": False,
+        "secrets_file_exists": False,
+        "looks_like_placeholder": False,
+        "secrets_error": None,
+    }
+
+    secrets_path = Path(".streamlit/secrets.toml")
+    info["secrets_file_exists"] = secrets_path.exists()
+
+    try:
+        info["found_in_secrets"] = bool(st.secrets.get("ANTHROPIC_API_KEY"))
+    except Exception as exc:
+        info["secrets_error"] = str(exc)
+
+    env_val = os.environ.get("ANTHROPIC_API_KEY")
+    info["found_in_env"] = bool(env_val)
+
+    candidate = None
+    try:
+        candidate = st.secrets.get("ANTHROPIC_API_KEY")
+    except Exception:
+        pass
+    candidate = candidate or env_val
+    if candidate:
+        stripped = str(candidate).strip()
+        info["looks_like_placeholder"] = (
+            stripped in {"", "sk-ant-...", "sk-ant-your-real-key-here", "your-key-here"}
+            or not stripped.startswith("sk-ant-")
+        )
+
+    return info
 
 
 def get_model_name() -> str:
