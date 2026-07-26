@@ -70,7 +70,7 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml
 Edit `.streamlit/secrets.toml` and set:
 
 ```toml
-ANTHROPIC_API_KEY = "sk-ant-your-real-key-here"
+ANTHROPIC_API_KEY = "sk-ant-api03-fZx...VAAA"
 ```
 
 `.streamlit/secrets.toml` is git-ignored, so your key will never be committed.
