@@ -178,6 +178,43 @@ def get_recommendation_history(ticker: str | None = None, days: int = 90) -> lis
         return []
 
 
+def save_prediction(
+    ticker: str,
+    predicted_direction: str,
+    predicted_low: float | None,
+    predicted_high: float | None,
+    confidence: str = "MEDIUM",
+    notes: str = "",
+) -> bool:
+    """Upsert today's (unscored) prediction for a ticker.
+
+    Mirrors the MCP server's `save_daily_prediction` tool so entries logged
+    from the dashboard's "Daily Run" button and from Claude Desktop share
+    the same table and are both visible via `get_scored_predictions` once
+    scored.
+    """
+    if not ensure_schema():
+        return False
+    try:
+        today = datetime.now().strftime("%Y-%m-%d")
+        with _connect() as conn:
+            conn.execute(
+                "DELETE FROM predictions WHERE date = ? AND ticker = ? AND actual_close IS NULL",
+                (today, ticker),
+            )
+            conn.execute(
+                """
+                INSERT INTO predictions
+                (date, ticker, predicted_direction, predicted_low, predicted_high, confidence, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (today, ticker, predicted_direction, predicted_low, predicted_high, confidence, notes),
+            )
+        return True
+    except Exception:
+        return False
+
+
 def get_scored_predictions(limit: int = 30) -> list[dict]:
     """Predictions that have been scored against actuals, most recent first."""
     if not ensure_schema():

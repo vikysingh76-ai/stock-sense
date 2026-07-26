@@ -41,6 +41,7 @@ exactly this schema:
 
 {
   "signal": "STRONG BUY" | "BUY" | "HOLD" | "SELL" | "STRONG SELL",
+  "conviction": "HIGH" | "MEDIUM" | "LOW",
   "target_price": <number, INR>,
   "stop_loss": <number, INR>,
   "buy_reasons": [<string>, <string>, <string>],
@@ -54,6 +55,7 @@ exactly this schema:
 }
 
 Rules:
+- conviction reflects how strongly the data supports the signal (HIGH/MEDIUM/LOW).
 - buy_reasons must contain exactly 3 short, specific bullet points (max ~15 words each).
 - risks must contain exactly 2 short, specific bullet points (max ~15 words each).
 - target_price and stop_loss must be plausible numeric INR price levels near the current market price.
@@ -141,6 +143,7 @@ class StockRecommendation:
     signal: str
     target_price: float | None
     stop_loss: float | None
+    conviction: str = "MEDIUM"
     buy_reasons: list[str] = field(default_factory=list)
     risks: list[str] = field(default_factory=list)
     timeframe_signals: dict[str, str] = field(default_factory=dict)
@@ -172,11 +175,16 @@ def _heuristic_recommendation(ticker: str, cmp: float | None, week52_high, week5
     else:
         signal = "HOLD"
 
+    # More extreme 52-week positioning => a (heuristically) more confident call.
+    extremity = abs(position - 0.5)
+    conviction = "HIGH" if extremity > 0.35 else "MEDIUM" if extremity > 0.15 else "LOW"
+
     base = cmp or 100.0
     return StockRecommendation(
         signal=signal,
         target_price=round(base * 1.10, 2),
         stop_loss=round(base * 0.94, 2),
+        conviction=conviction,
         buy_reasons=[
             "Demo heuristic view based on 52-week price positioning.",
             "Configure ANTHROPIC_API_KEY to enable real AI-generated analysis.",
@@ -239,6 +247,7 @@ Provide your structured recommendation as specified in the system prompt."""
             signal=str(data.get("signal", "HOLD")).upper(),
             target_price=data.get("target_price"),
             stop_loss=data.get("stop_loss"),
+            conviction=str(data.get("conviction", "MEDIUM")).upper(),
             buy_reasons=list(data.get("buy_reasons", []))[:3],
             risks=list(data.get("risks", []))[:2],
             timeframe_signals={
