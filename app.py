@@ -10,7 +10,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src import ai_engine, auth, market_data, sample_data
+from src import ai_engine, auth, db, market_data, sample_data
 from src.styling import CUSTOM_CSS, signal_badge_class
 
 st.set_page_config(
@@ -191,25 +191,56 @@ def render_stock_analyser() -> None:
             st.write("")
             submitted = st.form_submit_button("Analyse", type="primary", width="stretch")
 
-    if not submitted:
+    if submitted:
+        ticker = ticker_input.strip().upper()
+        if not ticker:
+            st.warning("Please enter a valid NSE ticker (e.g. RELIANCE.NS).")
+            return
+
+        with st.spinner(f"Fetching 1-year price history for {ticker}..."):
+            hist = market_data.fetch_price_history(ticker, period="1y")
+
+        if hist.empty:
+            st.error(f"Could not fetch data for '{ticker}'. Check the ticker symbol and try again.")
+            st.session_state.pop("analysis", None)
+            return
+
+        with st.spinner("Fetching fundamentals..."):
+            stats = market_data.fetch_stock_stats(ticker)
+
+        with st.spinner("Asking Claude for a structured recommendation..."):
+            rec = ai_engine.get_stock_recommendation(
+                ticker=ticker,
+                company_name=stats.name or ticker,
+                cmp=stats.cmp,
+                week52_high=stats.week52_high,
+                week52_low=stats.week52_low,
+                market_cap=stats.market_cap,
+                pe_ratio=stats.pe_ratio,
+                recent_history_summary=summarize_recent_history(hist),
+            )
+
+        # Cache results in session_state so subsequent reruns (e.g. clicking
+        # "Save this recommendation" or expanding history below) keep showing
+        # this analysis instead of resetting, and so we don't re-call Claude
+        # on every unrelated widget interaction.
+        st.session_state["analysis"] = {
+            "ticker": ticker,
+            "hist": hist,
+            "stats": stats,
+            "rec": rec,
+        }
+
+    analysis = st.session_state.get("analysis")
+    if not analysis:
         return
 
-    ticker = ticker_input.strip().upper()
-    if not ticker:
-        st.warning("Please enter a valid NSE ticker (e.g. RELIANCE.NS).")
-        return
-
-    with st.spinner(f"Fetching 1-year price history for {ticker}..."):
-        hist = market_data.fetch_price_history(ticker, period="1y")
-
-    if hist.empty:
-        st.error(f"Could not fetch data for '{ticker}'. Check the ticker symbol and try again.")
-        return
+    ticker = analysis["ticker"]
+    hist = analysis["hist"]
+    stats = analysis["stats"]
+    rec = analysis["rec"]
 
     render_candlestick(hist, ticker)
-
-    with st.spinner("Fetching fundamentals..."):
-        stats = market_data.fetch_stock_stats(ticker)
 
     stat_cols = st.columns(5)
     stat_items = [
@@ -228,18 +259,6 @@ def render_stock_analyser() -> None:
             )
 
     st.markdown("#### 🤖 Claude AI Recommendation")
-    with st.spinner("Asking Claude for a structured recommendation..."):
-        rec = ai_engine.get_stock_recommendation(
-            ticker=ticker,
-            company_name=stats.name or ticker,
-            cmp=stats.cmp,
-            week52_high=stats.week52_high,
-            week52_low=stats.week52_low,
-            market_cap=stats.market_cap,
-            pe_ratio=stats.pe_ratio,
-            recent_history_summary=summarize_recent_history(hist),
-        )
-
     if rec.is_fallback:
         st.warning(
             "Showing a heuristic fallback recommendation (Claude API unavailable"
@@ -278,36 +297,91 @@ def render_stock_analyser() -> None:
     render_timeframe_signals(rec.timeframe_signals)
     st.markdown("</div>", unsafe_allow_html=True)
 
+    st.markdown("")
+    if st.button("💾 Save this recommendation", key=f"save_rec_{ticker}"):
+        saved = db.save_recommendation(
+            ticker=ticker,
+            signal=rec.signal,
+            cmp=stats.cmp or 0.0,
+            target=rec.target_price or 0.0,
+            stop_loss=rec.stop_loss or 0.0,
+            reasoning=" | ".join(rec.buy_reasons),
+            key_risks=" | ".join(rec.risks),
+        )
+        if saved:
+            st.success(
+                "Saved to the shared StockSense database — also visible from "
+                "Claude Desktop via the `get_recommendation_history` MCP tool."
+            )
+        else:
+            st.error("Could not save recommendation (local database unavailable).")
+
+    past_recs = db.get_recommendation_history(ticker=ticker, days=180)
+    if past_recs:
+        with st.expander(f"📚 Past AI Recommendations for {ticker} ({len(past_recs)})"):
+            past_df = pd.DataFrame(past_recs)[
+                ["date", "signal", "cmp", "target", "stop_loss", "conviction"]
+            ].rename(
+                columns={
+                    "date": "Date",
+                    "signal": "Signal",
+                    "cmp": "CMP",
+                    "target": "Target",
+                    "stop_loss": "Stop Loss",
+                    "conviction": "Conviction",
+                }
+            )
+            st.dataframe(past_df, width="stretch", hide_index=True)
+
 
 # --------------------------------------------------------------------------
 # Prediction accuracy tracker
 # --------------------------------------------------------------------------
 def render_accuracy_tracker() -> None:
     st.markdown('<div class="section-title">📊 Prediction Accuracy Tracker</div>', unsafe_allow_html=True)
+
+    live_predictions = db.get_scored_predictions(limit=7)
+    live_accuracy = db.get_prediction_accuracy_pct()
+
+    if live_predictions and live_accuracy is not None:
+        accuracy_pct = live_accuracy
+        caption = "Based on predictions scored via the India Stock Intelligence MCP server"
+        df_display = pd.DataFrame(live_predictions).rename(
+            columns={
+                "date": "Date",
+                "ticker": "Stock",
+                "predicted_direction": "Predicted Direction",
+                "actual_direction": "Actual Direction",
+                "score": "Score (/10)",
+            }
+        )[["Date", "Stock", "Predicted Direction", "Actual Direction", "Score (/10)"]]
+    else:
+        accuracy_pct = sample_data.OVERALL_ACCURACY
+        caption = "Based on the last 7 trading days (demo data)"
+        df = pd.DataFrame(sample_data.PREDICTION_HISTORY)
+        df_display = df.rename(
+            columns={
+                "date": "Date",
+                "stock": "Stock",
+                "predicted": "Predicted Signal",
+                "actual": "Actual Move",
+                "correct": "Correct?",
+            }
+        ).copy()
+        df_display["Correct?"] = df_display["Correct?"].map({True: "✅ Yes", False: "❌ No"})
+
     st.markdown(
         f"""
         <div class="accuracy-hero">
-            <div class="big-num">{sample_data.OVERALL_ACCURACY}%</div>
+            <div class="big-num">{accuracy_pct}%</div>
             <div>
                 <b>Overall Accuracy</b><br/>
-                <span style="color:#9aa5a1;font-size:0.85rem;">Based on the last 7 trading days (demo data)</span>
+                <span style="color:#9aa5a1;font-size:0.85rem;">{caption}</span>
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-
-    df = pd.DataFrame(sample_data.PREDICTION_HISTORY)
-    df_display = df.rename(
-        columns={
-            "date": "Date",
-            "stock": "Stock",
-            "predicted": "Predicted Signal",
-            "actual": "Actual Move",
-            "correct": "Correct?",
-        }
-    ).copy()
-    df_display["Correct?"] = df_display["Correct?"].map({True: "✅ Yes", False: "❌ No"})
 
     st.dataframe(df_display, width="stretch", hide_index=True)
 
@@ -318,12 +392,60 @@ def render_accuracy_tracker() -> None:
 def render_watchlist() -> None:
     st.markdown('<div class="section-title">⭐ Watchlist</div>', unsafe_allow_html=True)
 
-    refresh = st.button("🔄 Refresh AI Signals", help="AI signals are cached for up to an hour per ticker.")
-    if refresh:
-        ai_engine.get_quick_signal.clear()
+    db_watchlist = db.get_watchlist()
+    using_shared_db = bool(db_watchlist)
+
+    if using_shared_db:
+        tickers = [row["ticker"] for row in db_watchlist]
+        display_names = {row["ticker"]: row["name"] or row["ticker"] for row in db_watchlist}
+        st.caption(
+            "📡 Synced with the shared StockSense database — edits here are also visible "
+            "from Claude Desktop via the India Stock Intelligence MCP server."
+        )
+    else:
+        tickers = sample_data.WATCHLIST_TICKERS
+        display_names = sample_data.WATCHLIST_DISPLAY_NAMES
+
+    action_cols = st.columns([1, 1, 3])
+    with action_cols[0]:
+        refresh = st.button("🔄 Refresh AI Signals", help="AI signals are cached for up to an hour per ticker.")
+        if refresh:
+            ai_engine.get_quick_signal.clear()
+    with action_cols[1]:
+        manage_open = st.button("⚙️ Manage Watchlist")
+    if manage_open:
+        st.session_state["show_watchlist_manager"] = not st.session_state.get(
+            "show_watchlist_manager", False
+        )
+
+    if st.session_state.get("show_watchlist_manager", False):
+        with st.form("watchlist_manage_form"):
+            m_col1, m_col2, m_col3 = st.columns([2, 2, 1])
+            with m_col1:
+                new_ticker = st.text_input("Add ticker", placeholder="e.g. BAJFINANCE.NS")
+            with m_col2:
+                new_name = st.text_input("Company name (optional)", placeholder="e.g. Bajaj Finance")
+            with m_col3:
+                st.write("")
+                st.write("")
+                add_clicked = st.form_submit_button("Add", width="stretch")
+            if add_clicked and new_ticker.strip():
+                db.add_to_watchlist(new_ticker.strip().upper(), new_name.strip() or new_ticker.strip().upper())
+                st.rerun()
+
+        if tickers:
+            r_col1, r_col2 = st.columns([3, 1])
+            with r_col1:
+                remove_ticker = st.selectbox("Remove ticker", options=tickers, key="wl_remove_select")
+            with r_col2:
+                st.write("")
+                st.write("")
+                if st.button("Remove", width="stretch"):
+                    db.remove_from_watchlist(remove_ticker)
+                    st.rerun()
 
     rows = []
-    for ticker in sample_data.WATCHLIST_TICKERS:
+    for ticker in tickers:
         hist = market_data.fetch_price_history(ticker, period="5d")
         price = market_data.fetch_live_price(ticker)
 
@@ -335,7 +457,7 @@ def render_watchlist() -> None:
             summary = "insufficient recent data"
 
         signal = ai_engine.get_quick_signal(ticker, summary)
-        display_name = sample_data.WATCHLIST_DISPLAY_NAMES.get(ticker, ticker)
+        display_name = display_names.get(ticker, ticker)
         rows.append(
             {
                 "Ticker": display_name,

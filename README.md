@@ -28,6 +28,26 @@ and structured buy/sell recommendations from the Claude API.
 
 The whole UI uses a custom dark theme with green accents.
 
+## India Stock Intelligence MCP server
+
+This repo also includes `mcp_server/india_stock_mcp.py`, an MCP server for
+Claude Desktop that exposes live NSE/BSE data, fundamentals, news, watchlist
+management, and recommendation/prediction tracking as tools. It shares its
+SQLite database (`~/StockSenseAI/stocksense.db`) with this Streamlit app, so:
+
+- The **Watchlist** section automatically uses the shared database once it
+  has entries (editable in-app via the "⚙️ Manage Watchlist" panel, or from
+  Claude Desktop), falling back to the bundled demo tickers otherwise.
+- The **Stock Analyser**'s "💾 Save this recommendation" button and the
+  MCP server's `save_recommendation` tool write to the same
+  `recommendations` table, so either surface can review the other's calls.
+- The **Prediction Accuracy Tracker** shows real numbers once predictions
+  have been logged and scored via the MCP server; otherwise it shows the
+  bundled 7-day demo data.
+
+See `mcp_server/README.md` for the full tool list and Claude Desktop setup
+instructions.
+
 ## Setup
 
 ```bash
@@ -92,8 +112,13 @@ src/
   auth.py                     # Login gate
   market_data.py              # yfinance helpers (indices, history, stats)
   ai_engine.py                # Claude API integration + heuristic fallback
+  db.py                       # Shared SQLite data layer (see mcp_server/)
   sample_data.py              # Hardcoded demo data (top picks, accuracy log)
   styling.py                  # Shared custom CSS for the dark/green theme
+mcp_server/
+  india_stock_mcp.py          # MCP server for Claude Desktop
+  test_client.py              # Standalone smoke test for the MCP server
+  README.md                   # MCP server tool list + Claude Desktop setup
 .streamlit/
   config.toml                 # Streamlit dark theme config
   secrets.toml.example        # Template for local secrets (copy, don't commit)
