@@ -169,6 +169,50 @@ def render_timeframe_signals(signals: dict) -> None:
             )
 
 
+def render_api_key_diagnostics() -> None:
+    info = ai_engine.get_api_key_debug_info()
+    with st.expander("🔧 Why isn't my Anthropic API key being detected?"):
+        st.markdown(
+            f"""
+- Found in `st.secrets["ANTHROPIC_API_KEY"]`: {"✅ yes" if info["found_in_secrets"] else "❌ no"}
+- Found in environment variable `ANTHROPIC_API_KEY`: {"✅ yes" if info["found_in_env"] else "❌ no"}
+- `.streamlit/secrets.toml` file exists here: {"✅ yes" if info["secrets_file_exists"] else "❌ no"}
+"""
+        )
+        if info["secrets_error"]:
+            st.caption(f"Note: reading `st.secrets` raised: `{info['secrets_error']}`")
+        if info["looks_like_placeholder"]:
+            st.warning(
+                "The value found doesn't look like a real Anthropic key (real keys start "
+                "with `sk-ant-`). You may still have the example placeholder in place, "
+                "or a typo/extra quotes around the value.",
+                icon="⚠️",
+            )
+        st.markdown(
+            """
+**Common causes, in order of likelihood:**
+
+1. **Wrong file name/location.** It must be `.streamlit/secrets.toml` (copied from
+   `.streamlit/secrets.toml.example`), sitting next to `app.py`'s `.streamlit/` folder —
+   not `secrets.toml.example` itself, and not in the repo root.
+2. **Wrong key name.** Must be exactly `ANTHROPIC_API_KEY` (all caps, with underscores),
+   e.g. `ANTHROPIC_API_KEY = "sk-ant-..."`.
+3. **Deployed on Streamlit Community Cloud?** Secrets must be pasted into
+   **App → Settings → Secrets** in TOML format, then the app needs a **reboot**
+   (Manage app → Reboot) — editing secrets doesn't always auto-restart the app.
+4. **Set as a shell env var?** It only applies to processes started *after* you
+   ran `export ANTHROPIC_API_KEY=...` — restart `streamlit run app.py` in that
+   same terminal session.
+5. **Cursor Cloud Agent secret?** Secrets are injected when a new agent VM
+   boots, not into an already-running session. Added it just now? Start a new
+   Cloud Agent conversation/run for it to take effect there.
+6. **`.env` file?** Supported (loaded automatically), but only if it's in the
+   same directory you run `streamlit run app.py` from, with a line like
+   `ANTHROPIC_API_KEY=sk-ant-...` (no quotes needed in `.env` files).
+"""
+        )
+
+
 def render_stock_analyser() -> None:
     st.markdown('<div class="section-title">🔍 Stock Analyser</div>', unsafe_allow_html=True)
 
@@ -179,6 +223,7 @@ def render_stock_analyser() -> None:
             "Showing a heuristic demo analysis in the meantime.",
             icon="ℹ️",
         )
+        render_api_key_diagnostics()
 
     with st.form("analyser_form"):
         col1, col2 = st.columns([3, 1])
