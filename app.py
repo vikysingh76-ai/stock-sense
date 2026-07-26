@@ -179,6 +179,13 @@ def render_api_key_diagnostics() -> None:
 - `.streamlit/secrets.toml` file exists here: {"✅ yes" if info["secrets_file_exists"] else "❌ no"}
 """
         )
+        if info["found_in_secrets_section"]:
+            st.warning(
+                f"Your key was found nested under a `[{info['found_in_secrets_section']}]` "
+                "TOML section instead of at the top level. This still works (the app searches "
+                "nested sections too), but double-check that's what you intended.",
+                icon="⚠️",
+            )
         if info["secrets_error"]:
             st.caption(f"Note: reading `st.secrets` raised: `{info['secrets_error']}`")
         if info["looks_like_placeholder"]:
@@ -209,6 +216,10 @@ def render_api_key_diagnostics() -> None:
 6. **`.env` file?** Supported (loaded automatically), but only if it's in the
    same directory you run `streamlit run app.py` from, with a line like
    `ANTHROPIC_API_KEY=sk-ant-...` (no quotes needed in `.env` files).
+7. **Extra quotes or spaces?** In `secrets.toml`, the value must be a quoted
+   string with no stray characters, e.g. `ANTHROPIC_API_KEY = "sk-ant-..."`
+   — not `ANTHROPIC_API_KEY = ""sk-ant-...""` or `ANTHROPIC_API_KEY: sk-ant-...`
+   (that's YAML syntax, not TOML).
 """
         )
 

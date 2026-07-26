@@ -67,12 +67,36 @@ recent price action, respond with ONLY one word: BUY, HOLD, or SELL. No punctuat
 explanation, no markdown."""
 
 
+def _find_in_secrets(secrets_obj, key_name: str, _section: str | None = None):
+    """Recursively search st.secrets for key_name, including inside TOML
+    sections (e.g. a key accidentally nested under [default] instead of at
+    the top level). Returns (value, section_path) or (None, None).
+    """
+    try:
+        if key_name in secrets_obj:
+            return secrets_obj[key_name], _section
+    except Exception:
+        pass
+    try:
+        items = secrets_obj.items()
+    except Exception:
+        return None, None
+    for k, v in items:
+        try:
+            if hasattr(v, "items") or hasattr(v, "keys"):
+                found, section = _find_in_secrets(v, key_name, k)
+                if found:
+                    return found, section
+        except Exception:
+            continue
+    return None, None
+
+
 def get_api_key() -> str | None:
     try:
-        if "ANTHROPIC_API_KEY" in st.secrets:
-            key = st.secrets["ANTHROPIC_API_KEY"]
-            if key:
-                return str(key).strip()
+        value, _ = _find_in_secrets(st.secrets, "ANTHROPIC_API_KEY")
+        if value:
+            return str(value).strip()
     except Exception:
         pass
     key = os.environ.get("ANTHROPIC_API_KEY")
@@ -88,6 +112,7 @@ def get_api_key_debug_info() -> dict:
     """
     info = {
         "found_in_secrets": False,
+        "found_in_secrets_section": None,
         "found_in_env": False,
         "secrets_file_exists": False,
         "looks_like_placeholder": False,
@@ -97,20 +122,18 @@ def get_api_key_debug_info() -> dict:
     secrets_path = Path(".streamlit/secrets.toml")
     info["secrets_file_exists"] = secrets_path.exists()
 
+    secrets_candidate = None
     try:
-        info["found_in_secrets"] = bool(st.secrets.get("ANTHROPIC_API_KEY"))
+        secrets_candidate, section = _find_in_secrets(st.secrets, "ANTHROPIC_API_KEY")
+        info["found_in_secrets"] = bool(secrets_candidate)
+        info["found_in_secrets_section"] = section
     except Exception as exc:
         info["secrets_error"] = str(exc)
 
     env_val = os.environ.get("ANTHROPIC_API_KEY")
     info["found_in_env"] = bool(env_val)
 
-    candidate = None
-    try:
-        candidate = st.secrets.get("ANTHROPIC_API_KEY")
-    except Exception:
-        pass
-    candidate = candidate or env_val
+    candidate = secrets_candidate or env_val
     if candidate:
         stripped = str(candidate).strip()
         info["looks_like_placeholder"] = (
