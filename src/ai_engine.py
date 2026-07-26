@@ -115,7 +115,9 @@ def get_api_key_debug_info() -> dict:
         stripped = str(candidate).strip()
         info["looks_like_placeholder"] = (
             stripped in {"", "sk-ant-...", "sk-ant-your-real-key-here", "your-key-here"}
+            or "..." in stripped  # redacted/truncated examples (e.g. "sk-ant-api03-fZx...VAAA")
             or not stripped.startswith("sk-ant-")
+            or len(stripped) < 40  # real Anthropic keys are much longer than any placeholder
         )
 
     return info

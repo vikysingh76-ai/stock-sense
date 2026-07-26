@@ -67,13 +67,18 @@ committed to this repository** — you need to provide your own:
 cp .streamlit/secrets.toml.example .streamlit/secrets.toml
 ```
 
-Edit `.streamlit/secrets.toml` and set:
+Edit **`.streamlit/secrets.toml`** (the copy you just created, *not*
+`secrets.toml.example`) and set:
 
 ```toml
-ANTHROPIC_API_KEY = "sk-ant-api03-fZx...VAAA"
+ANTHROPIC_API_KEY = "sk-ant-your-real-key-here"
 ```
 
-`.streamlit/secrets.toml` is git-ignored, so your key will never be committed.
+`.streamlit/secrets.toml` is git-ignored, so your key will never be
+committed. Editing `secrets.toml.example` (or this README) does **not**
+configure anything -- the app never reads those files, only the real
+`secrets.toml` you create locally, an actual environment variable, a local
+`.env` file, or (if deployed) Streamlit Community Cloud's Secrets UI.
 
 **Option B — Environment variable**
 
