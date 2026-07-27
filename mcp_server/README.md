@@ -38,12 +38,15 @@ StockSense AI Streamlit app in this repo (see `src/db.py`), so:
 
 ## Setup
 
-Dependencies are included in the repo's top-level `requirements.txt`
-(`mcp`, `yfinance`, `pandas`, `requests`, `feedparser`). If you only want to
-run the MCP server in isolation:
+This server has its own `mcp_server/requirements.txt` (`mcp`, `yfinance`,
+`pandas`, `requests`, `feedparser`), kept **separate** from the top-level
+`requirements.txt` used to deploy the Streamlit app. It's not imported by
+`app.py` or anything under `src/`, and `mcp` requires Python >=3.10 and
+pulls in a fairly heavy dependency chain (uvicorn, starlette, pydantic,
+etc.) that the web app has no reason to depend on.
 
 ```bash
-pip install mcp yfinance pandas requests feedparser
+pip install -r mcp_server/requirements.txt
 ```
 
 ### Smoke test (no Claude Desktop required)
