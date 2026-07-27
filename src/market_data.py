@@ -1,8 +1,9 @@
-"""Market data helpers backed by yfinance.
+"""Market data helpers, preferring live Groww data when configured and
+falling back to yfinance (Yahoo Finance) otherwise.
 
-All functions are defensive about network/API failures (yfinance can be
-flaky or rate-limited) and return `None` / empty structures instead of
-raising, so the UI can degrade gracefully.
+All functions are defensive about network/API failures (both Groww and
+yfinance can be flaky or rate-limited) and return `None` / empty structures
+instead of raising, so the UI can degrade gracefully.
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ import pandas as pd
 import pytz
 import streamlit as st
 import yfinance as yf
+
+from src import groww_data
 
 IST = pytz.timezone("Asia/Kolkata")
 
@@ -39,6 +42,7 @@ MARKET_CLOSE_TIME = dtime(15, 30)
 
 
 def now_ist() -> datetime:
+    """Current time in Asia/Kolkata (IST)."""
     return datetime.now(IST)
 
 
@@ -55,6 +59,8 @@ def is_market_open(now: datetime | None = None) -> bool:
 
 @dataclass
 class IndexQuote:
+    """Quote for a market index (Nifty, Sensex, or a global market/FX cue)."""
+
     name: str
     ticker: str
     last_price: float | None
@@ -62,10 +68,34 @@ class IndexQuote:
     change: float | None
     change_pct: float | None
     as_of: datetime | None
+    source: str = "yfinance"
+
+
+def _fetch_index_quote_groww(name: str, ticker: str) -> IndexQuote | None:
+    """Attempts to build an IndexQuote from Groww; returns None on any failure."""
+    quote = groww_data.fetch_quote(ticker)
+    if not quote or quote.last_price is None:
+        return None
+    change = quote.change
+    change_pct = quote.change_pct
+    if change is None and quote.prev_close:
+        change = quote.last_price - quote.prev_close
+    if change_pct is None and quote.prev_close:
+        change_pct = (change / quote.prev_close * 100) if change else 0.0
+    return IndexQuote(
+        name, ticker, quote.last_price, quote.prev_close, change or 0.0,
+        change_pct or 0.0, now_ist(), source="groww",
+    )
 
 
 @st.cache_data(ttl=LIVE_QUOTE_TTL, show_spinner=False)
 def fetch_index_quote(name: str, ticker: str) -> IndexQuote:
+    """Live index/FX quote, preferring Groww (if configured) over yfinance."""
+    if groww_data.is_groww_configured():
+        groww_quote = _fetch_index_quote_groww(name, ticker)
+        if groww_quote:
+            return groww_quote
+
     try:
         tk = yf.Ticker(ticker)
         hist = tk.history(period="5d", interval="1d")
@@ -90,6 +120,7 @@ def fetch_global_markets() -> list[IndexQuote]:
 
 
 def summarize_global_markets(quotes: list[IndexQuote] | None = None) -> str:
+    """One-line text summary of global market quotes, for the AI prompt."""
     quotes = quotes if quotes is not None else fetch_global_markets()
     lines = []
     for q in quotes:
@@ -102,6 +133,12 @@ def summarize_global_markets(quotes: list[IndexQuote] | None = None) -> str:
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_price_history(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataFrame:
+    """Daily OHLCV history, preferring Groww (if configured) over yfinance."""
+    if interval == "1d" and groww_data.is_groww_configured():
+        groww_hist = groww_data.fetch_historical(ticker, period=period)
+        if groww_hist is not None and not groww_hist.empty:
+            return groww_hist
+
     try:
         tk = yf.Ticker(ticker)
         hist = tk.history(period=period, interval=interval)
@@ -112,6 +149,8 @@ def fetch_price_history(ticker: str, period: str = "1y", interval: str = "1d") -
 
 @dataclass
 class StockStats:
+    """Fundamental + price snapshot for one stock, from yfinance and/or Groww."""
+
     ticker: str
     cmp: float | None = None
     week52_high: float | None = None
@@ -127,7 +166,13 @@ class StockStats:
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_stock_stats(ticker: str) -> StockStats:
+    """Fundamentals from yfinance, overlaid with live price/volume/52W/
+    market-cap from Groww when configured."""
     stats = StockStats(ticker=ticker)
+
+    # yfinance is still used for fields Groww's quote doesn't provide
+    # (P/E ratio, company name/sector, longer-window average volume), and
+    # as the sole source of truth if Groww isn't configured or fails.
     try:
         tk = yf.Ticker(ticker)
         hist = tk.history(period="1y")
@@ -154,11 +199,28 @@ def fetch_stock_stats(ticker: str) -> StockStats:
         stats.avg_volume_3m = info.get("averageVolume") or info.get("averageVolume10days")
     except Exception:
         pass
+
+    if groww_data.is_groww_configured():
+        groww_quote = groww_data.fetch_quote(ticker)
+        if groww_quote and groww_quote.last_price is not None:
+            stats.cmp = groww_quote.last_price
+            if groww_quote.volume is not None:
+                stats.latest_volume = groww_quote.volume
+            stats.week52_high = groww_quote.week_52_high or stats.week52_high
+            stats.week52_low = groww_quote.week_52_low or stats.week52_low
+            stats.market_cap = groww_quote.market_cap or stats.market_cap
+
     return stats
 
 
 @st.cache_data(ttl=LIVE_QUOTE_TTL, show_spinner=False)
 def fetch_live_price(ticker: str) -> float | None:
+    """Latest traded price, preferring Groww (if configured) over yfinance."""
+    if groww_data.is_groww_configured():
+        ltp = groww_data.fetch_ltp(ticker)
+        if ltp is not None:
+            return ltp
+
     try:
         tk = yf.Ticker(ticker)
         hist = tk.history(period="2d", interval="1d")
@@ -171,6 +233,12 @@ def fetch_live_price(ticker: str) -> float | None:
 
 @st.cache_data(ttl=LIVE_QUOTE_TTL, show_spinner=False)
 def fetch_live_volume(ticker: str) -> float | None:
+    """Latest traded volume, preferring Groww (if configured) over yfinance."""
+    if groww_data.is_groww_configured():
+        quote = groww_data.fetch_quote(ticker)
+        if quote and quote.volume is not None:
+            return quote.volume
+
     try:
         tk = yf.Ticker(ticker)
         hist = tk.history(period="2d", interval="1d")
@@ -181,7 +249,16 @@ def fetch_live_volume(ticker: str) -> float | None:
         return None
 
 
+def get_data_source_label() -> str:
+    """Human-readable label for which live-data backend is currently active,
+    for UI transparency (e.g. next to the market status pill)."""
+    if groww_data.is_groww_configured():
+        return "📡 Live via Groww"
+    return "🕒 Yahoo Finance (~15 min delayed)"
+
+
 def format_inr(value: float | None, prefix: str = "\u20b9") -> str:
+    """Formats a rupee amount with Lakh/Crore suffixes for large values."""
     if value is None:
         return "N/A"
     if abs(value) >= 1e7:
@@ -192,6 +269,7 @@ def format_inr(value: float | None, prefix: str = "\u20b9") -> str:
 
 
 def format_volume(value: float | None) -> str:
+    """Formats a share-volume figure with Lakh/Crore suffixes for large values."""
     if value is None:
         return "N/A"
     if value >= 1e7:
@@ -202,6 +280,7 @@ def format_volume(value: float | None) -> str:
 
 
 def format_market_cap(value: float | None) -> str:
+    """Formats a market cap figure in Crores (with Lakh Cr for very large values)."""
     if value is None:
         return "N/A"
     # yfinance market cap is usually in absolute currency units.

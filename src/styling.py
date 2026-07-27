@@ -202,6 +202,7 @@ CUSTOM_CSS = """
 
 
 def signal_badge_class(signal: str) -> str:
+    """Maps a signal string (e.g. 'STRONG BUY') to its CSS badge class."""
     s = signal.upper().replace(" ", "").replace("_", "")
     if "STRONGBUY" in s:
         return "badge-strongbuy"
