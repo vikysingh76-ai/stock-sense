@@ -39,13 +39,34 @@ TOP_AI_PICKS = [
 
 # Last 7 days of demo predictions vs. actual outcome.
 PREDICTION_HISTORY = [
-    {"date": "2026-07-19", "stock": "RELIANCE.NS", "predicted": "BUY", "actual": "UP", "correct": True},
-    {"date": "2026-07-20", "stock": "TCS.NS", "predicted": "HOLD", "actual": "FLAT", "correct": True},
-    {"date": "2026-07-21", "stock": "HDFCBANK.NS", "predicted": "BUY", "actual": "UP", "correct": True},
-    {"date": "2026-07-22", "stock": "INFY.NS", "predicted": "SELL", "actual": "UP", "correct": False},
-    {"date": "2026-07-23", "stock": "ZOMATO.NS", "predicted": "BUY", "actual": "DOWN", "correct": False},
-    {"date": "2026-07-24", "stock": "TATAMOTORS.NS", "predicted": "STRONG BUY", "actual": "UP", "correct": True},
-    {"date": "2026-07-25", "stock": "SUNPHARMA.NS", "predicted": "BUY", "actual": "UP", "correct": True},
+    {
+        "date": "2026-07-19", "stock": "RELIANCE.NS",
+        "predicted": "BUY", "actual": "UP", "correct": True,
+    },
+    {
+        "date": "2026-07-20", "stock": "TCS.NS",
+        "predicted": "HOLD", "actual": "FLAT", "correct": True,
+    },
+    {
+        "date": "2026-07-21", "stock": "HDFCBANK.NS",
+        "predicted": "BUY", "actual": "UP", "correct": True,
+    },
+    {
+        "date": "2026-07-22", "stock": "INFY.NS",
+        "predicted": "SELL", "actual": "UP", "correct": False,
+    },
+    {
+        "date": "2026-07-23", "stock": "ZOMATO.NS",
+        "predicted": "BUY", "actual": "DOWN", "correct": False,
+    },
+    {
+        "date": "2026-07-24", "stock": "TATAMOTORS.NS",
+        "predicted": "STRONG BUY", "actual": "UP", "correct": True,
+    },
+    {
+        "date": "2026-07-25", "stock": "SUNPHARMA.NS",
+        "predicted": "BUY", "actual": "UP", "correct": True,
+    },
 ]
 
 OVERALL_ACCURACY = 71  # percent, hardcoded demo headline figure

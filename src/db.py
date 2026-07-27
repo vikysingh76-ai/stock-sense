@@ -96,6 +96,7 @@ def get_watchlist() -> list[dict]:
 
 
 def add_to_watchlist(ticker: str, name: str, notes: str = "") -> None:
+    """Adds (or updates) a ticker in the shared watchlist."""
     if not ensure_schema():
         return
     with _connect() as conn:
@@ -106,6 +107,7 @@ def add_to_watchlist(ticker: str, name: str, notes: str = "") -> None:
 
 
 def remove_from_watchlist(ticker: str) -> None:
+    """Removes a ticker from the shared watchlist, if present."""
     if not ensure_schema():
         return
     with _connect() as conn:
@@ -123,6 +125,7 @@ def save_recommendation(
     conviction: str = "MEDIUM",
     key_risks: str = "",
 ) -> bool:
+    """Persists a buy/sell recommendation. Returns False if the DB is unreachable."""
     if not ensure_schema():
         return False
     try:
@@ -151,7 +154,13 @@ def save_recommendation(
         return False
 
 
+_RECOMMENDATION_COLUMNS = (
+    "date, ticker, signal, cmp, target, stop_loss, horizon, conviction, reasoning, key_risks"
+)
+
+
 def get_recommendation_history(ticker: str | None = None, days: int = 90) -> list[dict]:
+    """Past recommendations for one ticker, or the most recent across all tickers."""
     if not ensure_schema():
         return []
     cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -159,14 +168,14 @@ def get_recommendation_history(ticker: str | None = None, days: int = 90) -> lis
         with _connect() as conn:
             if ticker:
                 rows = conn.execute(
-                    "SELECT date, ticker, signal, cmp, target, stop_loss, horizon, conviction, reasoning, key_risks "
-                    "FROM recommendations WHERE ticker = ? AND date >= ? ORDER BY date DESC",
+                    f"SELECT {_RECOMMENDATION_COLUMNS} FROM recommendations "
+                    "WHERE ticker = ? AND date >= ? ORDER BY date DESC",
                     (ticker, cutoff),
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT date, ticker, signal, cmp, target, stop_loss, horizon, conviction, reasoning, key_risks "
-                    "FROM recommendations WHERE date >= ? ORDER BY date DESC LIMIT 20",
+                    f"SELECT {_RECOMMENDATION_COLUMNS} FROM recommendations "
+                    "WHERE date >= ? ORDER BY date DESC LIMIT 20",
                     (cutoff,),
                 ).fetchall()
         cols = [
@@ -208,7 +217,10 @@ def save_prediction(
                 (date, ticker, predicted_direction, predicted_low, predicted_high, confidence, notes)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (today, ticker, predicted_direction, predicted_low, predicted_high, confidence, notes),
+                (
+                    today, ticker, predicted_direction, predicted_low,
+                    predicted_high, confidence, notes,
+                ),
             )
         return True
     except Exception:
@@ -242,6 +254,7 @@ def get_scored_predictions(limit: int = 30) -> list[dict]:
 
 
 def get_prediction_accuracy_pct(rows: list[dict] | None = None) -> float | None:
+    """Percentage of `rows` (or all scored predictions) whose direction was correct."""
     rows = rows if rows is not None else get_scored_predictions()
     if not rows:
         return None

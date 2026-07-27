@@ -40,7 +40,8 @@ except ImportError:
     feedparser = None  # News will be unavailable but app still works
 
 try:
-    import requests  # noqa: F401  (reserved for future direct HTTP data sources)
+    # Reserved for future direct HTTP data sources; not yet used elsewhere.
+    import requests  # noqa: F401  pylint: disable=unused-import
 except ImportError:
     requests = None
 
@@ -57,8 +58,15 @@ DATA_DIR = Path.home() / "StockSenseAI"
 DATA_DIR.mkdir(exist_ok=True)
 DB_PATH = DATA_DIR / "stocksense.db"
 
+# Many of this file's report-formatting f-strings are long by design (fixed-width
+# columns/box-drawing characters for aligned CLI-style text output); wrapping them
+# would break that alignment without improving readability.
+# pylint: disable=line-too-long
+
+
 # ── Database setup ─────────────────────────────────────────────────────────────
 def init_db():
+    """Creates the shared watchlist/recommendations/predictions tables if missing."""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""
@@ -131,16 +139,18 @@ init_db()
 
 # ── Helper: format large numbers ──────────────────────────────────────────────
 def fmt_crore(val):
+    """Formats a rupee amount in Lakh/Thousand Crore units."""
     if val is None:
         return "N/A"
     crore = val / 1e7
     if crore >= 1e5:
         return f"₹{crore/1e5:.2f} Lakh Cr"
-    elif crore >= 1e3:
+    if crore >= 1e3:
         return f"₹{crore/1e3:.2f} K Cr"
     return f"₹{crore:.2f} Cr"
 
 def safe_round(val, digits=2):
+    """Rounds val to digits decimal places, or returns 'N/A' if not numeric."""
     try:
         return round(float(val), digits)
     except (TypeError, ValueError):
@@ -154,6 +164,7 @@ server = Server("india-stock-intelligence")
 # ─────────────────────────────────────────────────────────────────────────────
 @server.list_tools()
 async def list_tools():
+    """Declares all tools this MCP server exposes to a connected client."""
     return [
         Tool(
             name="get_market_indices",
@@ -311,47 +322,47 @@ async def list_tools():
 
 
 @server.call_tool()
-async def call_tool(name: str, arguments: dict) -> CallToolResult:
+async def call_tool(name: str, arguments: dict) -> CallToolResult:  # pylint: disable=too-many-return-statements
+    """Routes an incoming MCP tool call to its implementation by name."""
     try:
         if name == "get_market_indices":
             return await _get_market_indices()
-        elif name == "get_stock_quote":
+        if name == "get_stock_quote":
             return await _get_stock_quote(arguments["ticker"])
-        elif name == "get_stock_fundamentals":
+        if name == "get_stock_fundamentals":
             return await _get_stock_fundamentals(arguments["ticker"])
-        elif name == "get_historical_performance":
+        if name == "get_historical_performance":
             return await _get_historical_performance(
                 arguments["ticker"],
                 arguments.get("period", "1y")
             )
-        elif name == "get_multiple_quotes":
+        if name == "get_multiple_quotes":
             return await _get_multiple_quotes(arguments.get("tickers", []))
-        elif name == "get_stock_news":
+        if name == "get_stock_news":
             return await _get_stock_news(arguments["query"], arguments.get("max_results", 8))
-        elif name == "get_watchlist":
+        if name == "get_watchlist":
             return await _get_watchlist()
-        elif name == "update_watchlist":
+        if name == "update_watchlist":
             return await _update_watchlist(
                 arguments["action"],
                 arguments["ticker"],
                 arguments.get("name", ""),
                 arguments.get("notes", "")
             )
-        elif name == "save_recommendation":
+        if name == "save_recommendation":
             return await _save_recommendation(arguments)
-        elif name == "save_daily_prediction":
+        if name == "save_daily_prediction":
             return await _save_daily_prediction(arguments)
-        elif name == "score_yesterdays_prediction":
+        if name == "score_yesterdays_prediction":
             return await _score_prediction(arguments)
-        elif name == "get_prediction_accuracy":
+        if name == "get_prediction_accuracy":
             return await _get_prediction_accuracy()
-        elif name == "get_recommendation_history":
+        if name == "get_recommendation_history":
             return await _get_recommendation_history(
                 arguments.get("ticker", ""),
                 arguments.get("days", 90)
             )
-        else:
-            return CallToolResult(content=[TextContent(type="text", text=f"Unknown tool: {name}")])
+        return CallToolResult(content=[TextContent(type="text", text=f"Unknown tool: {name}")])
     except Exception as e:
         return CallToolResult(content=[TextContent(type="text", text=f"Error in {name}: {str(e)}")])
 
@@ -616,7 +627,7 @@ async def _get_watchlist():
         return CallToolResult(content=[TextContent(type="text", text="Watchlist is empty. Add stocks using update_watchlist.")])
 
     result = ["📋  YOUR WATCHLIST", "═" * 55]
-    for ticker, name, added, notes in rows:
+    for ticker, name, _added, notes in rows:
         result.append(f"  • {name:<30} ({ticker})")
         if notes:
             result.append(f"    Note: {notes}")
@@ -747,7 +758,7 @@ async def _get_prediction_accuracy():
         f"  {'DATE':<12} {'TICKER':<15} {'PREDICTED':>10} {'ACTUAL':>10} {'SCORE':>6}",
         "  " + "─" * 55
     ]
-    for ticker, date, pred_dir, act_dir, score, p_low, p_high, act_close in rows[:15]:
+    for ticker, date, pred_dir, act_dir, score, _p_low, _p_high, _act_close in rows[:15]:
         match = "✅" if pred_dir == act_dir else "❌"
         result.append(f"  {date:<12} {ticker:<15} {pred_dir:>10} {act_dir:>10} {score:>5}/10 {match}")
 
@@ -771,7 +782,7 @@ async def _get_recommendation_history(ticker: str = "", days: int = 90):
     result = [f"📚  RECOMMENDATION HISTORY {'— ' + ticker if ticker else '(All Stocks)'}",
               "═" * 60]
     for row in rows:
-        _, date, t, signal, cmp, target, sl, horizon, conviction, reasoning, risks = row
+        _, date, t, signal, cmp, target, sl, _horizon, conviction, reasoning, _risks = row
         exp = ((target - cmp) / cmp) * 100
         result.extend([
             f"\n  [{date}] {t} — {signal}  ({conviction} conviction)",
@@ -784,6 +795,7 @@ async def _get_recommendation_history(ticker: str = "", days: int = 90):
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 async def main():
+    """Run the MCP server over stdio until the client disconnects."""
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())
 
