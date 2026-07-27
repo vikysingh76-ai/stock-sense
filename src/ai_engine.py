@@ -32,9 +32,19 @@ DEFAULT_MODEL = "claude-sonnet-5"
 ANALYSIS_SYSTEM_PROMPT = """You are StockSense AI, an equity-research assistant that analyses \
 Indian (NSE/BSE) listed stocks for a demo investment-intelligence product.
 
-You will be given recent price/volume history and fundamental snapshot data for one stock. \
-Using ONLY the data provided (plus your general knowledge of the company/sector), produce a \
-structured trading view.
+You will be given: recent price/volume history and fundamental snapshot data for one stock, \
+recent real news headlines about the company/sector, and a snapshot of global market cues \
+(US indices, crude oil, USD/INR). Use ALL of this data (plus your general knowledge of the \
+company/sector) to produce a structured trading view that explicitly reasons about FOUR \
+analysis dimensions:
+
+1. Financial results -- recent/likely quarterly earnings, revenue and profit trends.
+2. Key government/policy decisions -- RBI rate moves, budget/regulatory changes relevant to \
+   the stock's sector.
+3. Geopolitical conditions -- global trade tensions, regional conflicts, supply-chain impacts \
+   relevant to this company or its sector.
+4. Foreign/global market cues -- how US markets, crude oil, and USD/INR are likely to affect \
+   the next NSE/BSE session for this stock.
 
 Respond with ONLY a single valid JSON object (no markdown fences, no commentary) matching \
 exactly this schema:
@@ -51,13 +61,24 @@ exactly this schema:
     "weekly": "BUY" | "HOLD" | "SELL",
     "monthly": "BUY" | "HOLD" | "SELL",
     "yearly": "BUY" | "HOLD" | "SELL"
+  },
+  "market_context": {
+    "financial_results": <string, 1-2 sentences>,
+    "government_policy": <string, 1-2 sentences>,
+    "geopolitical": <string, 1-2 sentences>,
+    "global_markets": <string, 1-2 sentences>
   }
 }
 
 Rules:
 - conviction reflects how strongly the data supports the signal (HIGH/MEDIUM/LOW).
-- buy_reasons must contain exactly 3 short, specific bullet points (max ~15 words each).
+- buy_reasons must contain exactly 3 short, specific bullet points (max ~15 words each), and \
+should draw on the four analysis dimensions above where relevant (not purely technicals).
 - risks must contain exactly 2 short, specific bullet points (max ~15 words each).
+- Each market_context field must be a short, specific sentence or two grounded in the provided \
+news headlines/global market data where possible; if no relevant information was provided for \
+a dimension, give your best general-knowledge assessment and say so briefly (e.g. "No specific \
+recent headlines; sector generally exposed to ...").
 - target_price and stop_loss must be plausible numeric INR price levels near the current market price.
 - This is clearly a demo tool. Do not include disclaimers inside the JSON fields themselves; \
 the app will render its own disclaimer.
@@ -147,6 +168,7 @@ class StockRecommendation:
     buy_reasons: list[str] = field(default_factory=list)
     risks: list[str] = field(default_factory=list)
     timeframe_signals: dict[str, str] = field(default_factory=dict)
+    market_context: dict[str, str] = field(default_factory=dict)
     is_fallback: bool = False
     error: str | None = None
 
@@ -195,6 +217,12 @@ def _heuristic_recommendation(ticker: str, cmp: float | None, week52_high, week5
             "Market conditions can change rapidly; verify independently.",
         ],
         timeframe_signals={"daily": "HOLD", "weekly": "HOLD", "monthly": signal, "yearly": signal},
+        market_context={
+            "financial_results": "Not analysed -- configure ANTHROPIC_API_KEY for real analysis.",
+            "government_policy": "Not analysed -- configure ANTHROPIC_API_KEY for real analysis.",
+            "geopolitical": "Not analysed -- configure ANTHROPIC_API_KEY for real analysis.",
+            "global_markets": "Not analysed -- configure ANTHROPIC_API_KEY for real analysis.",
+        },
         is_fallback=True,
         error=error,
     )
@@ -209,6 +237,8 @@ def get_stock_recommendation(
     market_cap: float | None,
     pe_ratio: float | None,
     recent_history_summary: str,
+    news_headlines: list[str] | None = None,
+    global_markets_summary: str = "",
 ) -> StockRecommendation:
     api_key = get_api_key()
     if not api_key:
@@ -216,6 +246,8 @@ def get_stock_recommendation(
             ticker, cmp, week52_high, week52_low,
             error="No ANTHROPIC_API_KEY configured.",
         )
+
+    news_section = "\n".join(f"- {h}" for h in (news_headlines or [])) or "No recent headlines found."
 
     user_prompt = f"""Stock: {company_name} ({ticker})
 Current Market Price (CMP): INR {cmp}
@@ -227,6 +259,13 @@ Trailing P/E: {pe_ratio}
 Recent price/volume behaviour (most recent last):
 {recent_history_summary}
 
+Recent real news headlines about this company/sector (use these for the financial results, \
+government policy, and geopolitical analysis dimensions):
+{news_section}
+
+Global market cues (use for the foreign/global markets analysis dimension):
+{global_markets_summary or "No global market data available."}
+
 Provide your structured recommendation as specified in the system prompt."""
 
     try:
@@ -235,7 +274,7 @@ Provide your structured recommendation as specified in the system prompt."""
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model=get_model_name(),
-            max_tokens=1024,
+            max_tokens=2048,
             system=ANALYSIS_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_prompt}],
         )
@@ -252,6 +291,9 @@ Provide your structured recommendation as specified in the system prompt."""
             risks=list(data.get("risks", []))[:2],
             timeframe_signals={
                 k: str(v).upper() for k, v in dict(data.get("timeframe_signals", {})).items()
+            },
+            market_context={
+                k: str(v) for k, v in dict(data.get("market_context", {})).items()
             },
             is_fallback=False,
         )

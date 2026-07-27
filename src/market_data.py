@@ -22,6 +22,18 @@ INDEX_TICKERS = {
     "SENSEX": "^BSESN",
 }
 
+# Global/"foreign exchange" cues used to ground the AI recommendation's
+# cross-market analysis (US markets, crude, and USD/INR all commonly move
+# Indian markets at the next NSE/BSE open).
+GLOBAL_MARKET_TICKERS = {
+    "Dow Jones": "^DJI",
+    "Nasdaq": "^IXIC",
+    "Crude Oil (WTI)": "CL=F",
+    "USD/INR": "INR=X",
+}
+
+LIVE_QUOTE_TTL = 20  # seconds -- short so the dashboard feels close to live
+
 MARKET_OPEN_TIME = dtime(9, 15)
 MARKET_CLOSE_TIME = dtime(15, 30)
 
@@ -52,7 +64,7 @@ class IndexQuote:
     as_of: datetime | None
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=LIVE_QUOTE_TTL, show_spinner=False)
 def fetch_index_quote(name: str, ticker: str) -> IndexQuote:
     try:
         tk = yf.Ticker(ticker)
@@ -68,6 +80,24 @@ def fetch_index_quote(name: str, ticker: str) -> IndexQuote:
         return IndexQuote(name, ticker, last_price, prev_close, change, change_pct, as_of)
     except Exception:
         return IndexQuote(name, ticker, None, None, None, None, None)
+
+
+def fetch_global_markets() -> list[IndexQuote]:
+    """Quick snapshot of a few global markets/commodities/FX that typically
+    influence the next NSE/BSE session, for the AI's "foreign exchange"
+    analysis dimension."""
+    return [fetch_index_quote(name, ticker) for name, ticker in GLOBAL_MARKET_TICKERS.items()]
+
+
+def summarize_global_markets(quotes: list[IndexQuote] | None = None) -> str:
+    quotes = quotes if quotes is not None else fetch_global_markets()
+    lines = []
+    for q in quotes:
+        if q.last_price is None:
+            lines.append(f"{q.name}: data unavailable")
+        else:
+            lines.append(f"{q.name}: {q.last_price:,.2f} ({q.change_pct:+.2f}%)")
+    return "; ".join(lines) if lines else "No global market data available."
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -90,6 +120,9 @@ class StockStats:
     pe_ratio: float | None = None
     name: str | None = None
     currency: str = "INR"
+    latest_volume: float | None = None
+    avg_volume_10d: float | None = None
+    avg_volume_3m: float | None = None
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -102,6 +135,8 @@ def fetch_stock_stats(ticker: str) -> StockStats:
             stats.cmp = float(hist["Close"].iloc[-1])
             stats.week52_high = float(hist["High"].max())
             stats.week52_low = float(hist["Low"].min())
+            stats.latest_volume = float(hist["Volume"].iloc[-1])
+            stats.avg_volume_10d = float(hist["Volume"].tail(10).mean())
 
         info = {}
         try:
@@ -116,12 +151,13 @@ def fetch_stock_stats(ticker: str) -> StockStats:
         stats.pe_ratio = info.get("trailingPE")
         stats.name = info.get("longName") or info.get("shortName") or ticker
         stats.currency = info.get("currency", "INR")
+        stats.avg_volume_3m = info.get("averageVolume") or info.get("averageVolume10days")
     except Exception:
         pass
     return stats
 
 
-@st.cache_data(ttl=90, show_spinner=False)
+@st.cache_data(ttl=LIVE_QUOTE_TTL, show_spinner=False)
 def fetch_live_price(ticker: str) -> float | None:
     try:
         tk = yf.Ticker(ticker)
@@ -129,6 +165,18 @@ def fetch_live_price(ticker: str) -> float | None:
         if hist.empty:
             return None
         return float(hist["Close"].iloc[-1])
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=LIVE_QUOTE_TTL, show_spinner=False)
+def fetch_live_volume(ticker: str) -> float | None:
+    try:
+        tk = yf.Ticker(ticker)
+        hist = tk.history(period="2d", interval="1d")
+        if hist.empty:
+            return None
+        return float(hist["Volume"].iloc[-1])
     except Exception:
         return None
 
@@ -141,6 +189,16 @@ def format_inr(value: float | None, prefix: str = "\u20b9") -> str:
     if abs(value) >= 1e5:
         return f"{prefix}{value / 1e5:,.2f} L"
     return f"{prefix}{value:,.2f}"
+
+
+def format_volume(value: float | None) -> str:
+    if value is None:
+        return "N/A"
+    if value >= 1e7:
+        return f"{value / 1e7:,.2f} Cr"
+    if value >= 1e5:
+        return f"{value / 1e5:,.2f} L"
+    return f"{value:,.0f}"
 
 
 def format_market_cap(value: float | None) -> str:

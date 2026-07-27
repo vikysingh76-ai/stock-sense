@@ -9,8 +9,9 @@ from __future__ import annotations
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from plotly.subplots import make_subplots
 
-from src import ai_engine, auth, db, market_data, sample_data
+from src import ai_engine, auth, db, market_data, news, sample_data
 from src.styling import CUSTOM_CSS, signal_badge_class
 
 st.set_page_config(
@@ -44,6 +45,7 @@ def _current_watchlist() -> tuple[list[str], dict[str, str]]:
 # --------------------------------------------------------------------------
 # Top header (title, market status, indices)
 # --------------------------------------------------------------------------
+@st.fragment(run_every=market_data.LIVE_QUOTE_TTL)
 def render_top_header() -> None:
     now = market_data.now_ist()
     market_open = market_data.is_market_open(now)
@@ -134,29 +136,52 @@ def render_top_picks() -> None:
 # Stock analysis (chart, stats, AI recommendation)
 # --------------------------------------------------------------------------
 def render_candlestick(hist: pd.DataFrame, ticker: str) -> None:
-    fig = go.Figure(
-        data=[
-            go.Candlestick(
-                x=hist.index,
-                open=hist["Open"],
-                high=hist["High"],
-                low=hist["Low"],
-                close=hist["Close"],
-                increasing_line_color="#00e676",
-                decreasing_line_color="#ff5252",
-                name=ticker,
-            )
-        ]
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        row_heights=[0.75, 0.25],
+        vertical_spacing=0.03,
+    )
+    fig.add_trace(
+        go.Candlestick(
+            x=hist.index,
+            open=hist["Open"],
+            high=hist["High"],
+            low=hist["Low"],
+            close=hist["Close"],
+            increasing_line_color="#00e676",
+            decreasing_line_color="#ff5252",
+            name=ticker,
+        ),
+        row=1,
+        col=1,
+    )
+    volume_colors = [
+        "#00e676" if c >= o else "#ff5252" for o, c in zip(hist["Open"], hist["Close"])
+    ]
+    fig.add_trace(
+        go.Bar(
+            x=hist.index,
+            y=hist["Volume"],
+            marker_color=volume_colors,
+            name="Volume",
+            showlegend=False,
+        ),
+        row=2,
+        col=1,
     )
     fig.update_layout(
-        height=460,
+        height=560,
         margin=dict(l=10, r=10, t=30, b=10),
         template="plotly_dark",
         paper_bgcolor="#0e1117",
         plot_bgcolor="#0e1117",
         xaxis_rangeslider_visible=False,
-        title=f"{ticker} — 1 Year Price History",
+        title=f"{ticker} — 1 Year Price History & Volume Traded",
     )
+    fig.update_yaxes(title_text="Price (₹)", row=1, col=1)
+    fig.update_yaxes(title_text="Volume", row=2, col=1)
     st.plotly_chart(fig, width="stretch")
 
 
@@ -181,6 +206,44 @@ def render_timeframe_signals_inline(signals: dict) -> None:
             f'<span class="tf-inline"><b>{label}:</b> <span class="tf-badge {cls}">{sig}</span></span>'
         )
     st.markdown(f'<div class="ai-summary-row tf-inline-row">{"".join(spans)}</div>', unsafe_allow_html=True)
+
+
+@st.fragment(run_every=market_data.LIVE_QUOTE_TTL)
+def render_live_quote(ticker: str, hist: pd.DataFrame) -> None:
+    """Auto-refreshing (every ~20s) live price + volume line for the
+    currently analysed stock, independent of the rest of the page."""
+    live_price = market_data.fetch_live_price(ticker)
+    live_volume = market_data.fetch_live_volume(ticker)
+    price = live_price if live_price is not None else (
+        float(hist["Close"].iloc[-1]) if len(hist) else None
+    )
+
+    if len(hist) > 1:
+        prev_close = float(hist["Close"].iloc[-2])
+        day_change = (price - prev_close) if price is not None else 0.0
+        day_change_pct = (day_change / prev_close * 100) if prev_close else 0.0
+    else:
+        day_change = day_change_pct = 0.0
+    up = day_change >= 0
+    arrow = "▲" if up else "▼"
+    change_cls = "idx-up" if up else "idx-down"
+    price_display = f"₹{price:,.2f}" if price is not None else "N/A"
+    volume_display = market_data.format_volume(live_volume)
+
+    st.markdown(
+        f"""
+        <div class="quick-quote-line">
+            📊 <b>{ticker}</b>
+            <span class="quick-quote-price">{price_display}</span>
+            <span class="{change_cls}">{arrow} {abs(day_change_pct):.2f}%</span>
+            <span style="color:#9aa5a1;font-size:0.9rem;">Vol: {volume_display}</span>
+            <span style="color:#5c6864;font-size:0.75rem;">
+                ⟳ live, updates every {market_data.LIVE_QUOTE_TTL}s
+            </span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_api_key_diagnostics() -> None:
@@ -245,6 +308,12 @@ def _run_analysis(ticker: str) -> None:
     with st.spinner("Fetching fundamentals..."):
         stats = market_data.fetch_stock_stats(ticker)
 
+    with st.spinner("Fetching recent news and global market cues..."):
+        company_query = (stats.name or ticker).replace(".NS", "").replace(".BO", "")
+        headlines = news.fetch_news_headlines(f"{company_query} India stock", max_results=5)
+        headline_titles = [h["title"] for h in headlines]
+        global_markets_summary = market_data.summarize_global_markets()
+
     with st.spinner("Asking Claude for a structured recommendation..."):
         rec = ai_engine.get_stock_recommendation(
             ticker=ticker,
@@ -255,6 +324,8 @@ def _run_analysis(ticker: str) -> None:
             market_cap=stats.market_cap,
             pe_ratio=stats.pe_ratio,
             recent_history_summary=summarize_recent_history(hist),
+            news_headlines=headline_titles,
+            global_markets_summary=global_markets_summary,
         )
 
     # Cache results in session_state so subsequent reruns (e.g. clicking
@@ -267,6 +338,8 @@ def _run_analysis(ticker: str) -> None:
         "hist": hist,
         "stats": stats,
         "rec": rec,
+        "headlines": headlines,
+        "global_markets_summary": global_markets_summary,
     }
 
 
@@ -297,36 +370,22 @@ def render_analysis_results() -> None:
     hist = analysis["hist"]
     stats = analysis["stats"]
     rec = analysis["rec"]
+    headlines = analysis.get("headlines", [])
+    global_markets_summary = analysis.get("global_markets_summary", "")
 
-    if len(hist) > 1:
-        day_change = hist["Close"].iloc[-1] - hist["Close"].iloc[-2]
-        day_change_pct = (day_change / hist["Close"].iloc[-2] * 100) if hist["Close"].iloc[-2] else 0.0
-    else:
-        day_change = day_change_pct = 0.0
-    up = day_change >= 0
-    arrow = "▲" if up else "▼"
-    change_cls = "idx-up" if up else "idx-down"
-    cmp_display = f"₹{stats.cmp:,.2f}" if stats.cmp else "N/A"
-    st.markdown(
-        f"""
-        <div class="quick-quote-line">
-            📊 <b>{ticker}</b>
-            <span class="quick-quote-price">{cmp_display}</span>
-            <span class="{change_cls}">{arrow} {abs(day_change_pct):.2f}%</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
+    render_live_quote(ticker, hist)
     render_candlestick(hist, ticker)
 
-    stat_cols = st.columns(5)
+    cmp_display = f"₹{stats.cmp:,.2f}" if stats.cmp else "N/A"
+    stat_cols = st.columns(7)
     stat_items = [
         ("CMP", cmp_display),
         ("52W High", f"₹{stats.week52_high:,.2f}" if stats.week52_high else "N/A"),
         ("52W Low", f"₹{stats.week52_low:,.2f}" if stats.week52_low else "N/A"),
         ("Market Cap", market_data.format_market_cap(stats.market_cap)),
         ("P/E Ratio", f"{stats.pe_ratio:.2f}" if stats.pe_ratio else "N/A"),
+        ("Volume Traded", market_data.format_volume(stats.latest_volume)),
+        ("Avg Vol (10D)", market_data.format_volume(stats.avg_volume_10d)),
     ]
     for col, (label, value) in zip(stat_cols, stat_items):
         with col:
@@ -377,7 +436,37 @@ def render_analysis_results() -> None:
         st.markdown("**⚠️ Key Risks**")
         for risk in rec.risks:
             st.markdown(f"- {risk}")
+
+    if rec.market_context:
+        st.markdown("**🌐 Market Context**")
+        ctx_cols = st.columns(4)
+        ctx_items = [
+            ("📊 Financial Results", rec.market_context.get("financial_results", "N/A")),
+            ("🏛️ Government Policy", rec.market_context.get("government_policy", "N/A")),
+            ("🌍 Geopolitical", rec.market_context.get("geopolitical", "N/A")),
+            ("💹 Global Markets", rec.market_context.get("global_markets", "N/A")),
+        ]
+        for col, (label, value) in zip(ctx_cols, ctx_items):
+            with col:
+                st.markdown(
+                    f"""<div class="stat-box" style="text-align:left;height:100%;">
+                    <div class="stat-label">{label}</div>
+                    <div style="font-size:0.8rem;color:#d7ddd9;margin-top:0.3rem;">{value}</div>
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
     st.markdown("</div>", unsafe_allow_html=True)
+
+    if headlines or global_markets_summary:
+        with st.expander("📰 Data used for this analysis (news + global markets)"):
+            if headlines:
+                st.markdown("**Recent headlines considered:**")
+                for h in headlines:
+                    st.markdown(f"- {h['title']} _{('(' + h['published'] + ')') if h['published'] else ''}_")
+            else:
+                st.caption("No recent news headlines were found for this stock.")
+            st.markdown("**Global market snapshot considered:**")
+            st.caption(global_markets_summary or "N/A")
 
     st.markdown("")
     if st.button("💾 Save this recommendation", key=f"save_rec_{ticker}"):
