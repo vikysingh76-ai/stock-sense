@@ -133,6 +133,54 @@ CUSTOM_CSS = """
         margin-bottom: 1rem;
     }
     .accuracy-hero .big-num { font-size: 2.3rem; font-weight: 900; color: #00e676; }
+
+    /* ---------- Sidebar control panel ---------- */
+    [data-testid="stSidebar"] {
+        background: #10151a; border-right: 1px solid #1f2b23;
+    }
+    [data-testid="stSidebar"] .sidebar-brand {
+        font-size: 1.05rem; font-weight: 800; color: #f1f5f2; margin-bottom: 0.2rem;
+    }
+    [data-testid="stSidebar"] .sidebar-section-title {
+        font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+        color: #6fbf8b; font-weight: 800; margin: 1.1rem 0 0.4rem 0;
+    }
+    [data-testid="stSidebar"] .stButton button {
+        text-align: left; justify-content: flex-start;
+    }
+
+    /* ---------- Compact "Top Picks" list rows ---------- */
+    .top-pick-row {
+        display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap;
+        background: #10201a; border: 1px solid rgba(0, 230, 118, 0.22);
+        border-radius: 10px; padding: 0.55rem 0.9rem; margin-bottom: 0.5rem;
+    }
+    .top-pick-rank {
+        width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+        background: rgba(0, 230, 118, 0.18); color: #00e676; font-weight: 800; font-size: 0.78rem;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .top-pick-name { font-weight: 800; color: #f1f5f2; min-width: 130px; }
+    .top-pick-price { color: #b7c0bb; font-size: 0.88rem; }
+    .top-pick-target { color: #9aa5a1; font-size: 0.85rem; }
+    .top-pick-horizon {
+        margin-left: auto; color: #7b847f; font-size: 0.78rem;
+        background: rgba(255,255,255,0.04); border-radius: 6px; padding: 0.15rem 0.5rem;
+    }
+
+    /* ---------- Compact analysed-stock quote line ---------- */
+    .quick-quote-line {
+        font-size: 1.15rem; margin: 0.4rem 0 0.8rem 0; color: #f1f5f2;
+        display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+    }
+    .quick-quote-price { font-weight: 800; font-size: 1.3rem; }
+
+    .ai-summary-row {
+        display: flex; align-items: center; gap: 1.1rem; flex-wrap: wrap;
+        margin-bottom: 0.55rem; font-size: 0.95rem; color: #d7ddd9;
+    }
+    .tf-inline-row { gap: 0.9rem; }
+    .tf-inline { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; color: #b7c0bb; }
 </style>
 """
 

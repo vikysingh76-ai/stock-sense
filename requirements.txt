@@ -7,7 +7,8 @@ anthropic>=0.34.0
 pytz>=2024.1
 python-dotenv>=1.0.1
 
-# For mcp_server/india_stock_mcp.py (India Stock Intelligence MCP server)
+# feedparser also powers src/news.py (real news grounding for AI analysis);
+# mcp/requests are for mcp_server/india_stock_mcp.py (India Stock Intelligence MCP server)
 mcp>=1.2.0
 feedparser>=6.0.11
 requests>=2.32.0
