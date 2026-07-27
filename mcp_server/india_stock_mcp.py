@@ -5,7 +5,8 @@ MCP server for Claude Desktop providing live NSE/BSE stock data,
 fundamentals, news, watchlist management, and prediction tracking.
 
 Install dependencies:
-    pip install mcp yfinance pandas requests feedparser
+    pip install -r mcp_server/requirements.txt
+    (or: pip install mcp yfinance pandas requests feedparser)
 
 Run test:
     python india_stock_mcp.py

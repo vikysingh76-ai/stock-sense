@@ -1,0 +1,5 @@
+mcp>=1.2.0
+yfinance>=0.2.43
+pandas>=2.2.0
+requests>=2.32.0
+feedparser>=6.0.11

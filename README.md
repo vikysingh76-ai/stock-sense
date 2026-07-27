@@ -115,20 +115,31 @@ log in with:
 app.py                        # Main Streamlit app / page layout
 src/
   auth.py                     # Login gate
-  market_data.py              # yfinance helpers (indices, history, stats)
+  market_data.py              # yfinance helpers (indices, history, stats, volume, global markets)
   ai_engine.py                # Claude API integration + heuristic fallback
+  news.py                     # Real news headline fetching (grounds the AI analysis)
   db.py                       # Shared SQLite data layer (see mcp_server/)
   sample_data.py              # Hardcoded demo data (top picks, accuracy log)
   styling.py                  # Shared custom CSS for the dark/green theme
 mcp_server/
   india_stock_mcp.py          # MCP server for Claude Desktop
+  requirements.txt            # MCP-server-only dependencies (see note below)
   test_client.py              # Standalone smoke test for the MCP server
   README.md                   # MCP server tool list + Claude Desktop setup
 .streamlit/
   config.toml                 # Streamlit dark theme config
   secrets.toml.example        # Template for local secrets (copy, don't commit)
-requirements.txt
+requirements.txt              # Web app dependencies only (see note below)
 ```
+
+**Note on dependencies:** the top-level `requirements.txt` (installed above)
+covers only what `app.py` actually needs. `mcp_server/` has its own
+`mcp_server/requirements.txt` and is intentionally **not** part of the web
+app's dependency list — its `mcp` package requires Python >=3.10 and pulls
+in a heavy dependency chain that has no reason to risk breaking the web
+app's deploy if it ever fails to install. If you're only running/deploying
+`app.py` (e.g. on Streamlit Community Cloud), you never need
+`mcp_server/requirements.txt` at all.
 
 ## Notes & limitations
 
