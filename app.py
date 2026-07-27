@@ -59,7 +59,7 @@ def render_top_header() -> None:
                 <div class="app-brand-badge">🇮🇳</div>
                 <div>
                     <div class="app-brand-text">India Stock Intelligence <span>Agent</span></div>
-                    <div style="font-size:0.78rem;color:#9aa5a1;">
+                    <div style="font-size:0.78rem;color:#64748b;">
                         AI-Powered Stock Intelligence for Indian Markets
                     </div>
                 </div>
@@ -116,27 +116,31 @@ def render_top_header() -> None:
 # --------------------------------------------------------------------------
 def render_top_picks() -> None:
     """Renders the highlighted 'Top AI Picks Today' banner."""
-    st.markdown('<div class="picks-banner">', unsafe_allow_html=True)
-    st.markdown("<h3>⭐ Top Picks Today</h3>", unsafe_allow_html=True)
+    rows_html = []
     for i, pick in enumerate(sample_data.TOP_AI_PICKS, start=1):
         badge_cls = signal_badge_class(pick["signal"])
-        price_line = (
-            f"CMP ₹{pick['cmp']:,.2f} &nbsp;→&nbsp; Target ₹{pick['target']:,.2f}"
+        # Deliberately a single line with no leading whitespace: Markdown
+        # treats 4+ leading spaces as a code block, which would otherwise
+        # make rows after the first render as raw escaped HTML text.
+        rows_html.append(
+            f'<div class="top-pick-row">'
+            f'<div class="top-pick-rank">{i}</div>'
+            f'<div class="top-pick-name">{pick["stock"]}</div>'
+            f'<span class="tf-badge {badge_cls}">{pick["signal"]}</span>'
+            f'<div class="top-pick-price">CMP ₹{pick["cmp"]:,.2f} &nbsp;→&nbsp; '
+            f'Target ₹{pick["target"]:,.2f}</div>'
+            f'<span class="pick-return">+{pick["expected_return"]}%</span>'
+            f'<div class="top-pick-horizon">{pick["horizon"]}</div>'
+            f"</div>"
         )
-        st.markdown(
-            f"""
-            <div class="top-pick-row">
-                <div class="top-pick-rank">{i}</div>
-                <div class="top-pick-name">{pick['stock']}</div>
-                <span class="tf-badge {badge_cls}">{pick['signal']}</span>
-                <div class="top-pick-price">{price_line}</div>
-                <span class="pick-return">+{pick['expected_return']}%</span>
-                <div class="top-pick-horizon">{pick['horizon']}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    st.markdown("</div>", unsafe_allow_html=True)
+    # Built and rendered as a single st.markdown call so the wrapping
+    # .picks-banner <div> actually contains the rows in the DOM -- splitting
+    # an opening/closing tag across separate st.markdown() calls does not
+    # nest content in Streamlit and renders an empty box instead.
+    st.markdown(
+        f'<div class="picks-banner"><h3>⭐ Top Picks Today</h3>{"".join(rows_html)}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -158,15 +162,15 @@ def render_candlestick(hist: pd.DataFrame, ticker: str) -> None:
             high=hist["High"],
             low=hist["Low"],
             close=hist["Close"],
-            increasing_line_color="#00e676",
-            decreasing_line_color="#ff5252",
+            increasing_line_color="#15803d",
+            decreasing_line_color="#b91c1c",
             name=ticker,
         ),
         row=1,
         col=1,
     )
     volume_colors = [
-        "#00e676" if c >= o else "#ff5252" for o, c in zip(hist["Open"], hist["Close"])
+        "#86efac" if c >= o else "#fca5a5" for o, c in zip(hist["Open"], hist["Close"])
     ]
     fig.add_trace(
         go.Bar(
@@ -182,14 +186,16 @@ def render_candlestick(hist: pd.DataFrame, ticker: str) -> None:
     fig.update_layout(
         height=560,
         margin={"l": 10, "r": 10, "t": 30, "b": 10},
-        template="plotly_dark",
-        paper_bgcolor="#0e1117",
-        plot_bgcolor="#0e1117",
+        template="plotly_white",
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        font={"color": "#1e293b"},
         xaxis_rangeslider_visible=False,
         title=f"{ticker} — 1 Year Price History & Volume Traded",
     )
-    fig.update_yaxes(title_text="Price (₹)", row=1, col=1)
-    fig.update_yaxes(title_text="Volume", row=2, col=1)
+    fig.update_xaxes(gridcolor="#e2e8f0")
+    fig.update_yaxes(title_text="Price (₹)", gridcolor="#e2e8f0", row=1, col=1)
+    fig.update_yaxes(title_text="Volume", gridcolor="#e2e8f0", row=2, col=1)
     st.plotly_chart(fig, width="stretch")
 
 
@@ -246,8 +252,8 @@ def render_live_quote(ticker: str, hist: pd.DataFrame) -> None:
             📊 <b>{ticker}</b>
             <span class="quick-quote-price">{price_display}</span>
             <span class="{change_cls}">{arrow} {abs(day_change_pct):.2f}%</span>
-            <span style="color:#9aa5a1;font-size:0.9rem;">Vol: {volume_display}</span>
-            <span style="color:#5c6864;font-size:0.75rem;">
+            <span style="color:#64748b;font-size:0.9rem;">Vol: {volume_display}</span>
+            <span style="color:#94a3b8;font-size:0.75rem;">
                 ⟳ live, updates every {market_data.LIVE_QUOTE_TTL}s
             </span>
         </div>
@@ -458,51 +464,54 @@ def render_analysis_results() -> None:
         "LOW": "badge-sell",
     }.get(rec.conviction, "badge-hold")
 
-    st.markdown('<div class="rec-card">', unsafe_allow_html=True)
-    st.markdown(
-        f"""
-        <div class="ai-summary-row">
-            <span class="signal-badge {badge_cls}">SIGNAL: {rec.signal}</span>
-            <span class="signal-badge {conviction_cls}">CONVICTION: {rec.conviction}</span>
-        </div>
-        <div class="ai-summary-row">
-            <span><b>TARGET:</b> {f"₹{rec.target_price:,.2f}" if rec.target_price else "N/A"}</span>
-            <span><b>STOP LOSS:</b> {f"₹{rec.stop_loss:,.2f}" if rec.stop_loss else "N/A"}</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    render_timeframe_signals_inline(rec.timeframe_signals)
+    # A single st.container(border=True) actually wraps the Streamlit widgets
+    # below (columns, etc.) in a real bordered box -- unlike splitting a raw
+    # <div class="rec-card"> open/close tag across separate st.markdown()
+    # calls, which renders each as an isolated, unnested DOM element.
+    with st.container(border=True):
+        st.markdown(
+            f"""
+            <div class="ai-summary-row">
+                <span class="signal-badge {badge_cls}">SIGNAL: {rec.signal}</span>
+                <span class="signal-badge {conviction_cls}">CONVICTION: {rec.conviction}</span>
+            </div>
+            <div class="ai-summary-row">
+                <span><b>TARGET:</b> {f"₹{rec.target_price:,.2f}" if rec.target_price else "N/A"}</span>
+                <span><b>STOP LOSS:</b> {f"₹{rec.stop_loss:,.2f}" if rec.stop_loss else "N/A"}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        render_timeframe_signals_inline(rec.timeframe_signals)
 
-    reason_col, risk_col = st.columns(2)
-    with reason_col:
-        st.markdown("**✅ Key Buy Reasons**")
-        for reason in rec.buy_reasons:
-            st.markdown(f"- {reason}")
-    with risk_col:
-        st.markdown("**⚠️ Key Risks**")
-        for risk in rec.risks:
-            st.markdown(f"- {risk}")
+        reason_col, risk_col = st.columns(2)
+        with reason_col:
+            st.markdown("**✅ Key Buy Reasons**")
+            for reason in rec.buy_reasons:
+                st.markdown(f"- {reason}")
+        with risk_col:
+            st.markdown("**⚠️ Key Risks**")
+            for risk in rec.risks:
+                st.markdown(f"- {risk}")
 
-    if rec.market_context:
-        st.markdown("**🌐 Market Context**")
-        ctx_cols = st.columns(4)
-        ctx_items = [
-            ("📊 Financial Results", rec.market_context.get("financial_results", "N/A")),
-            ("🏛️ Government Policy", rec.market_context.get("government_policy", "N/A")),
-            ("🌍 Geopolitical", rec.market_context.get("geopolitical", "N/A")),
-            ("💹 Global Markets", rec.market_context.get("global_markets", "N/A")),
-        ]
-        for col, (label, value) in zip(ctx_cols, ctx_items):
-            with col:
-                st.markdown(
-                    f"""<div class="stat-box" style="text-align:left;height:100%;">
-                    <div class="stat-label">{label}</div>
-                    <div style="font-size:0.8rem;color:#d7ddd9;margin-top:0.3rem;">{value}</div>
-                    </div>""",
-                    unsafe_allow_html=True,
-                )
-    st.markdown("</div>", unsafe_allow_html=True)
+        if rec.market_context:
+            st.markdown("**🌐 Market Context**")
+            ctx_cols = st.columns(4)
+            ctx_items = [
+                ("📊 Financial Results", rec.market_context.get("financial_results", "N/A")),
+                ("🏛️ Government Policy", rec.market_context.get("government_policy", "N/A")),
+                ("🌍 Geopolitical", rec.market_context.get("geopolitical", "N/A")),
+                ("💹 Global Markets", rec.market_context.get("global_markets", "N/A")),
+            ]
+            for col, (label, value) in zip(ctx_cols, ctx_items):
+                with col:
+                    st.markdown(
+                        f"""<div class="stat-box" style="text-align:left;height:100%;">
+                        <div class="stat-label">{label}</div>
+                        <div style="font-size:0.8rem;color:#334155;margin-top:0.3rem;">{value}</div>
+                        </div>""",
+                        unsafe_allow_html=True,
+                    )
 
     if headlines or global_markets_summary:
         with st.expander("📰 Data used for this analysis (news + global markets)"):
@@ -596,7 +605,7 @@ def render_accuracy_tracker() -> None:
             <div class="big-num">{accuracy_pct}%</div>
             <div>
                 <b>Overall Accuracy</b><br/>
-                <span style="color:#9aa5a1;font-size:0.85rem;">{caption}</span>
+                <span style="color:#64748b;font-size:0.85rem;">{caption}</span>
             </div>
         </div>
         """,
@@ -652,8 +661,8 @@ def render_watchlist() -> None:
     wl_df = pd.DataFrame(rows)
 
     def _style_signal(val: str) -> str:
-        colors = {"BUY": "#00e676", "STRONG BUY": "#00e676", "HOLD": "#ffc107", "SELL": "#ff5252"}
-        color = colors.get(val, "#e6e6e6")
+        colors = {"BUY": "#15803d", "STRONG BUY": "#15803d", "HOLD": "#b45309", "SELL": "#b91c1c"}
+        color = colors.get(val, "#1e293b")
         return f"color: {color}; font-weight: 700;"
 
     styled = wl_df.style.map(_style_signal, subset=["AI Signal"])
