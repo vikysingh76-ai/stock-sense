@@ -8,6 +8,12 @@ pytz>=2024.1
 python-dotenv>=1.0.1
 feedparser>=6.0.11
 
+# Optional live NSE/BSE data via the user's own Groww account (see
+# src/groww_data.py). Safe to leave installed even without credentials --
+# the app falls back to yfinance automatically when unconfigured.
+growwapi>=1.0.0
+pyotp>=2.9.0
+
 # NOTE: mcp_server/india_stock_mcp.py (the Claude Desktop MCP server) has its
 # own separate mcp_server/requirements.txt. It is intentionally NOT included
 # here: it's not imported by app.py or anything under src/, and its `mcp`

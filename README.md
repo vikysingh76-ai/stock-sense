@@ -48,6 +48,54 @@ SQLite database (`~/StockSenseAI/stocksense.db`) with this Streamlit app, so:
 See `mcp_server/README.md` for the full tool list and Claude Desktop setup
 instructions.
 
+## Live NSE/BSE data via Groww (optional)
+
+By default, all market data comes from `yfinance` (Yahoo Finance) — free,
+no account needed, but typically ~15 minutes delayed. If you have a
+[Groww](https://groww.in) account with an active
+[Trading API subscription](https://groww.in/trade-api) (paid), you can
+configure this app to pull genuinely live quotes, OHLC, and historical
+candles from Groww's official API instead — see `src/groww_data.py`.
+
+**Setup:**
+
+1. Get a Groww Trading API subscription: https://groww.in/trade-api
+2. Go to the [Groww Cloud API Keys page](https://groww.in/trade-api), log
+   in, and click the dropdown next to "Generate API Key" → **"Generate
+   TOTP token"** (the TOTP flow is used here rather than the API key/secret
+   flow because it doesn't expire and doesn't need daily manual
+   re-approval, which matters for an always-on web app).
+3. Copy the **TOTP token** and **TOTP secret** it gives you.
+4. Add both to `.streamlit/secrets.toml` (or as environment variables):
+
+```toml
+GROWW_API_KEY = "your-totp-token-here"
+GROWW_TOTP_SECRET = "your-totp-secret-here"
+```
+
+5. Restart the app. The header will show "📡 Live via Groww" instead of
+   "🕒 Yahoo Finance (~15 min delayed)" once connected. Use the sidebar's
+   "📡 Live Data Source (Groww)" panel to check connection status or force
+   a reconnect.
+
+If Groww isn't configured, or any individual call to it fails for any
+reason, the app automatically and silently falls back to `yfinance` — Groww
+is purely an optional upgrade, never a hard requirement.
+
+**Important caveats:**
+- This integration was built directly against
+  [Groww's published API docs](https://groww.in/trade-api/docs) but has
+  not been tested against a real Groww account/subscription during
+  development (no test credentials were available). Please verify it
+  behaves as expected with your own account, particularly the Sensex
+  (`^BSESN` → `SENSEX` on BSE) symbol mapping, which isn't explicitly
+  confirmed in Groww's docs.
+- Data fetched this way is tied to your personal Groww account and its API
+  subscription/rate limits (per Groww's docs: Live Data calls are limited
+  to 10/second and 300/minute). Review Groww's API terms of service before
+  relying on this for anything beyond personal/demo use, especially if you
+  deploy this app somewhere other people can access it.
+
 ## Setup
 
 ```bash
