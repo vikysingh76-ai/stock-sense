@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
 
-from src import ai_engine, auth, db, market_data, news, sample_data
+from src import ai_engine, auth, db, groww_data, market_data, news, sample_data
 from src.styling import CUSTOM_CSS, signal_badge_class
 
 st.set_page_config(
@@ -69,13 +69,15 @@ def render_top_header() -> None:
     with header_right:
         pill_class = "market-open" if market_open else "market-closed"
         pill_label = "MARKET OPEN" if market_open else "MARKET CLOSED"
+        data_source_label = market_data.get_data_source_label()
         st.markdown(
             f"""
             <div style="text-align:right;">
                 <span class="market-pill {pill_class}"><span class="dot"></span>{pill_label}</span>
                 <div class="app-datetime" style="margin-top:0.4rem;">
                     <b>{now.strftime('%d %b %Y, %I:%M:%S %p')}</b> IST<br/>
-                    Last updated: {now.strftime('%I:%M:%S %p')} IST
+                    Last updated: {now.strftime('%I:%M:%S %p')} IST<br/>
+                    {data_source_label}
                 </div>
             </div>
             """,
@@ -244,6 +246,29 @@ def render_live_quote(ticker: str, hist: pd.DataFrame) -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_groww_diagnostics() -> None:
+    with st.sidebar.expander("📡 Live Data Source (Groww)"):
+        info = groww_data.get_diagnostics()
+        if not info["package_installed"]:
+            st.caption("`growwapi`/`pyotp` not installed — using Yahoo Finance.")
+            return
+        if not info["credentials_found"]:
+            st.caption(
+                "Not configured — set `GROWW_API_KEY` and `GROWW_TOTP_SECRET` to enable "
+                "live NSE/BSE data via your Groww account. Falling back to Yahoo Finance "
+                "(~15 min delayed)."
+            )
+            return
+        if info["authenticated"]:
+            st.success("✅ Connected to Groww — using live data.", icon="✅")
+        else:
+            st.error(f"❌ Groww authentication failed: {info['error']}", icon="⚠️")
+            st.caption("Falling back to Yahoo Finance until this is resolved.")
+        if st.button("🔁 Reconnect to Groww", key="groww_reconnect", width="stretch"):
+            groww_data.clear_session()
+            st.rerun()
 
 
 def render_api_key_diagnostics() -> None:
@@ -726,6 +751,8 @@ def render_sidebar() -> None:
     ):
         _run_daily_batch(tickers)
         st.sidebar.success(f"Daily Run complete for {len(tickers)} stocks — see Watchlist section.")
+
+    render_groww_diagnostics()
 
     st.sidebar.divider()
     if st.sidebar.button("Log Out", width="stretch"):
