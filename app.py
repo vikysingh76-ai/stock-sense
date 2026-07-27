@@ -189,7 +189,7 @@ def render_candlestick(hist: pd.DataFrame, ticker: str) -> None:
         template="plotly_white",
         paper_bgcolor="#ffffff",
         plot_bgcolor="#ffffff",
-        font=dict(color="#1e293b"),
+        font={"color": "#1e293b"},
         xaxis_rangeslider_visible=False,
         title=f"{ticker} — 1 Year Price History & Volume Traded",
     )
