@@ -7,9 +7,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # 3.9 is the floor: growwapi (used by src/groww_data.py) requires
-        # Python >=3.9, so anything older can't even install dependencies.
-        python-version: ["3.9", "3.10", "3.11"]
+        # 3.10 is the floor: mcp_server/requirements.txt's `mcp` package
+        # requires Python >=3.10, so anything older can't even install
+        # dependencies (growwapi, also used here, only needs >=3.9, but
+        # mcp is the stricter constraint since both files are installed).
+        python-version: ["3.10", "3.11", "3.12"]
     steps:
     - uses: actions/checkout@v4
     - name: Set up Python ${{ matrix.python-version }}
