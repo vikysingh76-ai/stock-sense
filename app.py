@@ -47,6 +47,7 @@ def _current_watchlist() -> tuple[list[str], dict[str, str]]:
 # --------------------------------------------------------------------------
 @st.fragment(run_every=market_data.LIVE_QUOTE_TTL)
 def render_top_header() -> None:
+    """Auto-refreshing header: brand, market status/clock, and index cards."""
     now = market_data.now_ist()
     market_open = market_data.is_market_open(now)
 
@@ -114,17 +115,21 @@ def render_top_header() -> None:
 # Top picks (compact list)
 # --------------------------------------------------------------------------
 def render_top_picks() -> None:
+    """Renders the highlighted 'Top AI Picks Today' banner."""
     st.markdown('<div class="picks-banner">', unsafe_allow_html=True)
     st.markdown("<h3>⭐ Top Picks Today</h3>", unsafe_allow_html=True)
     for i, pick in enumerate(sample_data.TOP_AI_PICKS, start=1):
         badge_cls = signal_badge_class(pick["signal"])
+        price_line = (
+            f"CMP ₹{pick['cmp']:,.2f} &nbsp;→&nbsp; Target ₹{pick['target']:,.2f}"
+        )
         st.markdown(
             f"""
             <div class="top-pick-row">
                 <div class="top-pick-rank">{i}</div>
                 <div class="top-pick-name">{pick['stock']}</div>
                 <span class="tf-badge {badge_cls}">{pick['signal']}</span>
-                <div class="top-pick-price">CMP ₹{pick['cmp']:,.2f} &nbsp;→&nbsp; Target ₹{pick['target']:,.2f}</div>
+                <div class="top-pick-price">{price_line}</div>
                 <span class="pick-return">+{pick['expected_return']}%</span>
                 <div class="top-pick-horizon">{pick['horizon']}</div>
             </div>
@@ -138,6 +143,7 @@ def render_top_picks() -> None:
 # Stock analysis (chart, stats, AI recommendation)
 # --------------------------------------------------------------------------
 def render_candlestick(hist: pd.DataFrame, ticker: str) -> None:
+    """Renders a candlestick + volume chart for `ticker`'s price history."""
     fig = make_subplots(
         rows=2,
         cols=1,
@@ -175,7 +181,7 @@ def render_candlestick(hist: pd.DataFrame, ticker: str) -> None:
     )
     fig.update_layout(
         height=560,
-        margin=dict(l=10, r=10, t=30, b=10),
+        margin={"l": 10, "r": 10, "t": 30, "b": 10},
         template="plotly_dark",
         paper_bgcolor="#0e1117",
         plot_bgcolor="#0e1117",
@@ -188,6 +194,7 @@ def render_candlestick(hist: pd.DataFrame, ticker: str) -> None:
 
 
 def summarize_recent_history(hist: pd.DataFrame) -> str:
+    """Plain-text summary of the last 10 trading days, for the AI prompt."""
     if hist.empty:
         return "No historical data available."
     recent = hist.tail(10)
@@ -199,6 +206,7 @@ def summarize_recent_history(hist: pd.DataFrame) -> str:
 
 
 def render_timeframe_signals_inline(signals: dict) -> None:
+    """Renders Daily/Weekly/Monthly/Yearly signals as a compact inline row."""
     order = [("daily", "Daily"), ("weekly", "Weekly"), ("monthly", "Monthly"), ("yearly", "Yearly")]
     spans = []
     for key, label in order:
@@ -249,6 +257,7 @@ def render_live_quote(ticker: str, hist: pd.DataFrame) -> None:
 
 
 def render_groww_diagnostics() -> None:
+    """Sidebar panel showing Groww connection status and a reconnect button."""
     with st.sidebar.expander("📡 Live Data Source (Groww)"):
         info = groww_data.get_diagnostics()
         if not info["package_installed"]:
@@ -272,6 +281,7 @@ def render_groww_diagnostics() -> None:
 
 
 def render_api_key_diagnostics() -> None:
+    """Expander explaining why no Anthropic API key was detected."""
     info = ai_engine.get_api_key_debug_info()
     with st.expander("🔧 Why isn't my Anthropic API key being detected?"):
         st.markdown(
@@ -380,6 +390,7 @@ def _run_analysis(ticker: str) -> None:
 
 
 def render_analysis_results() -> None:
+    """Renders the chart, stats, and AI recommendation for the active analysis."""
     st.markdown('<div class="section-title">🔍 Stock Analysis</div>', unsafe_allow_html=True)
 
     if not ai_engine.is_ai_configured():
@@ -546,6 +557,7 @@ def render_analysis_results() -> None:
 # Prediction accuracy tracker
 # --------------------------------------------------------------------------
 def render_accuracy_tracker() -> None:
+    """Renders the prediction-accuracy headline and detailed log."""
     st.markdown('<div class="section-title">📈 Prediction Accuracy</div>', unsafe_allow_html=True)
 
     live_predictions = db.get_scored_predictions(limit=30)
@@ -599,6 +611,7 @@ def render_accuracy_tracker() -> None:
 # Watchlist (detailed table)
 # --------------------------------------------------------------------------
 def render_watchlist() -> None:
+    """Renders the detailed watchlist table (live price + AI signal per ticker)."""
     st.markdown('<div class="section-title">⭐ Watchlist</div>', unsafe_allow_html=True)
 
     tickers, display_names = _current_watchlist()
@@ -651,6 +664,7 @@ def render_watchlist() -> None:
 # Footer
 # --------------------------------------------------------------------------
 def render_footer() -> None:
+    """Renders the demo disclaimer footer."""
     st.markdown(
         """
         <div class="app-footer">
@@ -666,6 +680,7 @@ def render_footer() -> None:
 # Sidebar (control panel)
 # --------------------------------------------------------------------------
 def _run_daily_batch(tickers: list[str]) -> None:
+    """Generates and logs today's AI signal/predicted direction for every ticker."""
     results = []
     with st.spinner(f"Running daily AI scan for {len(tickers)} watchlist stocks..."):
         for ticker in tickers:
@@ -702,6 +717,7 @@ def _run_daily_batch(tickers: list[str]) -> None:
 
 
 def render_sidebar() -> None:
+    """Renders the sidebar control panel: stock picker, watchlist, and batch actions."""
     st.sidebar.markdown('<div class="sidebar-brand">🇮🇳 Control Panel</div>', unsafe_allow_html=True)
 
     tickers, display_names = _current_watchlist()
@@ -732,7 +748,8 @@ def render_sidebar() -> None:
         new_name = st.text_input("Company name (optional)", key="wl_add_name")
         if st.button("Add to watchlist", width="stretch", key="wl_add_btn"):
             if new_ticker.strip():
-                db.add_to_watchlist(new_ticker.strip().upper(), new_name.strip() or new_ticker.strip().upper())
+                clean_ticker = new_ticker.strip().upper()
+                db.add_to_watchlist(clean_ticker, new_name.strip() or clean_ticker)
                 st.rerun()
         if tickers:
             remove_ticker = st.selectbox("Remove ticker", options=tickers, key="wl_remove_select")
@@ -764,6 +781,7 @@ def render_sidebar() -> None:
 # Page routing
 # --------------------------------------------------------------------------
 def render_dashboard() -> None:
+    """Renders the full authenticated dashboard (sidebar + main content)."""
     render_sidebar()
     render_top_header()
     render_top_picks()
@@ -774,6 +792,7 @@ def render_dashboard() -> None:
 
 
 def main() -> None:
+    """Entry point: routes to the login page or the dashboard."""
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
 

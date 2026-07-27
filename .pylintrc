@@ -1,0 +1,36 @@
+[MASTER]
+ignore-patterns=.*_pb2\.py
+
+[MESSAGES CONTROL]
+# These reflect deliberate design choices in this codebase rather than real
+# problems:
+# - broad-exception-caught: the app is designed to degrade gracefully when
+#   external services (yfinance, Groww, Claude, feedparser) fail for any
+#   reason, so catching Exception broadly and falling back is intentional
+#   throughout src/ (see each module's top-of-file docstring).
+# - duplicate-code: mcp_server/india_stock_mcp.py is deliberately a
+#   standalone, single-file script (see its docstring) and intentionally
+#   mirrors src/db.py's schema rather than importing it, so both can be
+#   used/distributed independently.
+# - too-many-instance-attributes / too-many-arguments /
+#   too-many-positional-arguments / too-many-locals: several dataclasses
+#   (StockRecommendation, StockStats, GrowwQuote) and functions
+#   (get_stock_recommendation, save_recommendation) model inherently
+#   multi-field domain data (a stock recommendation, a quote, etc.);
+#   splitting them up would reduce readability more than it helps.
+disable=
+    broad-exception-caught,
+    duplicate-code,
+    too-many-instance-attributes,
+    too-many-arguments,
+    too-many-positional-arguments,
+    too-many-locals,
+    missing-module-docstring,
+    fixme
+
+[FORMAT]
+max-line-length=110
+
+[DESIGN]
+max-branches=20
+max-statements=70

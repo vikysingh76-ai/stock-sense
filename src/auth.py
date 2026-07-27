@@ -25,16 +25,19 @@ def _get_credential(key: str, default: str) -> str:
 
 
 def get_valid_credentials() -> tuple[str, str]:
+    """Returns the (username, password) the login form should accept."""
     username = _get_credential("APP_USERNAME", DEFAULT_USERNAME)
     password = _get_credential("APP_PASSWORD", DEFAULT_PASSWORD)
     return username, password
 
 
 def is_authenticated() -> bool:
+    """True if the current session has already logged in successfully."""
     return bool(st.session_state.get("authenticated", False))
 
 
 def log_out() -> None:
+    """Clears the current session's authenticated state."""
     st.session_state["authenticated"] = False
     st.session_state.pop("username", None)
 

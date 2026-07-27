@@ -78,6 +78,7 @@ def _get_credential(key: str) -> str | None:
 
 
 def is_groww_configured() -> bool:
+    """True if the growwapi/pyotp packages and both required credentials are available."""
     return bool(
         GrowwAPI is not None
         and pyotp is not None
@@ -155,6 +156,8 @@ def _map_symbol(ticker: str) -> tuple[str, str] | None:
 
 @dataclass
 class GrowwQuote:
+    """Normalized quote data returned by Groww's get_quote endpoint."""
+
     last_price: float | None = None
     prev_close: float | None = None
     change: float | None = None
@@ -168,6 +171,7 @@ class GrowwQuote:
 
 
 def fetch_quote(ticker: str) -> GrowwQuote | None:
+    """Live quote for `ticker` via Groww, or None if unavailable/unconfigured/failed."""
     client = get_client()
     mapped = _map_symbol(ticker)
     if not client or not mapped:
@@ -197,6 +201,7 @@ def fetch_quote(ticker: str) -> GrowwQuote | None:
 
 
 def fetch_ltp(ticker: str) -> float | None:
+    """Last traded price for `ticker` via Groww, or None if unavailable."""
     client = get_client()
     mapped = _map_symbol(ticker)
     if not client or not mapped:

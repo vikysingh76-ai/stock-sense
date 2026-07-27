@@ -19,6 +19,7 @@ SERVER_SCRIPT = Path(__file__).parent / "india_stock_mcp.py"
 
 
 async def main() -> None:
+    """Spawn the MCP server and exercise a handful of its tools over stdio."""
     params = StdioServerParameters(command=sys.executable, args=[str(SERVER_SCRIPT)])
 
     async with stdio_client(params) as (read, write):

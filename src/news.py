@@ -23,7 +23,8 @@ def fetch_news_headlines(query: str, max_results: int = 5) -> list[dict]:
     if feedparser is None or not query:
         return []
     try:
-        url = f"https://news.google.com/rss/search?q={query.replace(' ', '+')}&hl=en-IN&gl=IN&ceid=IN:en"
+        query_param = query.replace(" ", "+")
+        url = f"https://news.google.com/rss/search?q={query_param}&hl=en-IN&gl=IN&ceid=IN:en"
         feed = feedparser.parse(url)
         return [
             {"title": entry.get("title", ""), "published": entry.get("published", "")[:16]}
@@ -35,6 +36,7 @@ def fetch_news_headlines(query: str, max_results: int = 5) -> list[dict]:
 
 
 def summarize_headlines(headlines: list[dict]) -> str:
+    """Renders headlines as a simple bulleted list for embedding in a prompt."""
     if not headlines:
         return "No recent headlines available."
     return "\n".join(f"- {h['title']}" for h in headlines)

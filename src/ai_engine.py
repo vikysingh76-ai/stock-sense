@@ -15,6 +15,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import anthropic
 import streamlit as st
 
 try:
@@ -116,6 +117,7 @@ def _find_in_secrets(secrets_obj, key_name: str, _section: str | None = None):
 
 
 def get_api_key() -> str | None:
+    """Returns the Anthropic API key from st.secrets or the environment, or None."""
     try:
         value, _ = _find_in_secrets(st.secrets, "ANTHROPIC_API_KEY")
         if value:
@@ -170,6 +172,7 @@ def get_api_key_debug_info() -> dict:
 
 
 def get_model_name() -> str:
+    """Returns the configured Claude model id, or DEFAULT_MODEL if unset."""
     try:
         if "CLAUDE_MODEL" in st.secrets and st.secrets["CLAUDE_MODEL"]:
             return str(st.secrets["CLAUDE_MODEL"])
@@ -179,11 +182,14 @@ def get_model_name() -> str:
 
 
 def is_ai_configured() -> bool:
+    """True if an Anthropic API key is available from any supported source."""
     return bool(get_api_key())
 
 
 @dataclass
 class StockRecommendation:
+    """Structured output of a Claude (or heuristic-fallback) stock analysis."""
+
     signal: str
     target_price: float | None
     stop_loss: float | None
@@ -206,7 +212,13 @@ def _extract_json(text: str) -> dict:
     return json.loads(text)
 
 
-def _heuristic_recommendation(ticker: str, cmp: float | None, week52_high, week52_low, error: str | None = None) -> StockRecommendation:
+def _heuristic_recommendation(
+    ticker: str,
+    cmp: float | None,
+    week52_high,
+    week52_low,
+    error: str | None = None,
+) -> StockRecommendation:
     """Deterministic, non-AI fallback so the UI still functions without a live API key."""
     if cmp and week52_high and week52_low and week52_high != week52_low:
         position = (cmp - week52_low) / (week52_high - week52_low)
@@ -263,6 +275,8 @@ def get_stock_recommendation(
     news_headlines: list[str] | None = None,
     global_markets_summary: str = "",
 ) -> StockRecommendation:
+    """Calls Claude for a structured recommendation, or falls back to a
+    heuristic result if no API key is configured or the call fails."""
     api_key = get_api_key()
     if not api_key:
         return _heuristic_recommendation(
@@ -270,7 +284,9 @@ def get_stock_recommendation(
             error="No ANTHROPIC_API_KEY configured.",
         )
 
-    news_section = "\n".join(f"- {h}" for h in (news_headlines or [])) or "No recent headlines found."
+    news_section = (
+        "\n".join(f"- {h}" for h in (news_headlines or [])) or "No recent headlines found."
+    )
 
     user_prompt = f"""Stock: {company_name} ({ticker})
 Current Market Price (CMP): INR {cmp}
@@ -292,8 +308,6 @@ Global market cues (use for the foreign/global markets analysis dimension):
 Provide your structured recommendation as specified in the system prompt."""
 
     try:
-        import anthropic
-
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model=get_model_name(),
@@ -332,8 +346,6 @@ def get_quick_signal(ticker: str, price_change_summary: str) -> str:
         return "HOLD"
 
     try:
-        import anthropic
-
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model=get_model_name(),
